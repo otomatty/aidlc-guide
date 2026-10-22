@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・2.11.0・solo。2.8.1との実行順序の比較は関連記事に掲載。内容確認: 2026年10月9日。
+対象: 2.10.0・2.11.0・2.11.1・solo。2.8.1との実行順序の比較は関連記事に掲載。内容確認: 2026年10月22日。
 
 **soloは、1つのセッションが全Unitを担当する選択**です。実行順序や承認の自動化まで同時に決めるものではありません。
 
@@ -12,13 +12,13 @@ Unitは作業の単位、Boltはdelivery-planningで計画する提供単位で�
 
 1 Unit＝1 Boltなら、そのUnitに適用される機能設計、非機能要件、非機能設計、インフラ設計、コード生成・単体テストが、そのBoltの作業になります。スコープやUnitの種類により不要な工程は省かれます。全Unitの後に、共通のBuild and Test、実施対象ならCI Pipelineへ進みます。
 
-| 確認する設定                                         | 決めること                                         |
-| ---------------------------------------------------- | -------------------------------------------------- |
-| `Unit Ownership`                                     | soloかteamか                                       |
-| `Construction Iteration`                             | stage-majorかunit-majorか                          |
-| `Construction Autonomy Mode`                         | 通常の完了承認を人に確認するか                     |
-| `Construction Execution`・`Construction Checkpoints` | 2.10.0以降の直列・swarm実行と検証チェックポイント  |
-| `Plan Approval`                                      | 2.11.0で、各Unitのコード生成前に計画承認を尋ねるか |
+| 確認する設定                                         | 決めること                                           |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| `Unit Ownership`                                     | soloかteamか                                         |
+| `Construction Iteration`                             | stage-majorかunit-majorか                            |
+| `Construction Autonomy Mode`                         | 通常の完了承認を人に確認するか                       |
+| `Construction Execution`・`Construction Checkpoints` | 2.10.0以降の直列・swarm実行と検証チェックポイント    |
+| `Plan Approval`                                      | 2.11.0以降、各Unitのコード生成前に計画承認を尋ねるか |
 
 ## 2.11.0での追記
 
@@ -28,9 +28,15 @@ Unitは作業の単位、Boltはdelivery-planningで計画する提供単位で�
 
 2.11.0で加わった `Collaborators` は、各ステージで支援エージェントを使うかの設定です。soloやteam（Unitの担当方式）とは別の設定で、`enterprise` 以外の既定はoffです。offでは各ステージを主担当のエージェントだけで進めます。支援エージェントを加えるときは `/aidlc --collaborators on` を使います。
 
+## 2.11.1での追記
+
+**soloかteamかは、Inceptionの終わりに尋ねられます。** 2.11.1では、Unitが2つ以上あり `Unit Ownership` が未設定のまま Construction に入るとき、誰が作るかを1回だけ尋ねます。**Just me** で `Unit Ownership: solo`（このセッションが全Unitを作る）、**Several teams** で `team` になります。teamを選ぶとstage-majorの計画はunit-majorに切り替わり、各チームは既定で工程ごとに自分のUnitを承認します。どちらも選ばない返答ではこのセッションが作り続け、最初のUnitを作る前にチームを頼む方法が示されます。Unitが1つの場合や、Constructionがすでに始まっている場合は尋ねません。
+
+`Plan Approval`・`Collaborators` の各スコープの既定は、2.11.1でも上記のとおりです。
+
 ## 根拠
 
-[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0の作業ごとの設定（計画承認・Collaborators）](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md#ceremony-switches)。
+[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0の作業ごとの設定（計画承認・Collaborators）](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md#ceremony-switches)、[2.11.1の担当方式の質問](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/workshop-mode.md)、[2.11.1のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/reference/04-stages/construction.md#construction-walk)、[2.11.1のスコープ既定](https://github.com/awslabs/aidlc-workflows/tree/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/core/scopes)、[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)。
 
 ## 関連記事
 

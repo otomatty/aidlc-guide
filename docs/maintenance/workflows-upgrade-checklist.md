@@ -22,6 +22,22 @@ AI は版上げの調査・実装前にこのファイルを読み、確認し�
 - [x] docs / shell の同期を `aidlc-workflows-update.yml` に統合。書き込み権限は PR 公開ジョブだけに限定し、検査結果と採取物を保存。
 - [ ] GitHub の required checks を有効化。テンプレートは更新済み。専用 Release App の variable / secret が未登録のため、既存リリースを止めないよう適用を保留。設定後に main 上で統合同期の初回実行と保護ルールの有効性を確認する。
 
+v2.11.1 対応作業（2026-10-22）:
+
+対象は公式 v2.11.1、タグが指すコミット `895a35d86d20336d9b7bc4aedc9440e4a12c83ab`。比較元は manifest の公式 v2.11.0 `6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a`。公式タグの独立 checkout から配布物を生成し、drift は blocking 0 / findings 5。State Version 8・基本33ステージ・14エージェントは維持。毎日の同期は Doctor の未訳行で止まっていた。
+
+- [x] シェル同期: audit の Windows 追記修正と Cursor adapter のパッチを再適用し、override のハッシュを更新する。`.gitignore` ブロック（`aidlc/active-memory/`・`aidlc/.aidlc-request-text/`）と `.aidlc-version` を揃える。
+- [x] reader の互換修正: 設定の `flags.statusline` / `flags.statuslineReplaced`、ソース指紋の CRLF 正規化と生バイトの別名、ソース境界の新しい除外（`.idea`・`.codegraph`・`DerivedData`、マニフェスト隣の依存フォルダー）、`.aidlc-source-paths.json` の `exclude`、`Review Finished: no`。
+- [x] Space の切り替え: 2.11.1 は追跡対象のインクルードを書き換えず、`aidlc/active-memory/` のコピーを更新する。画面の説明・ガイド・テストを合わせた。
+- [x] プラグイン: 同梱 focus のビルド名が `focus` になったため、同梱パッケージの検査とカタログを更新。カスタマイズの検証テストを `contributions/<phase>/` に合わせた。
+- [x] Doctor: 新しい診断を訳し、採取の warning シナリオを古い更新確認キャッシュに変え、Machine 節に Plugin marketplace を加える。2.11.1 の契約を登録し、CI 実行 39710190933 で 3 OS × 9 ケースを登録した。
+- [x] 英語87ページと新規1ページ、版宣言・bridge（説明本文 8 ステージ）・索引・成果物 map を同期する。
+- [x] 日本語は変更のあった全ページを英語の差分と照合し、2.11.1 の更新履歴と改善点ガイドを追加する。独自 tips の対象版を見直す。
+- [ ] 競合マーカーを含む `intents.json` の読取り（上流は両側の和集合を読む）。Guide は従来どおり保留・フォールバックする。影響は低いため次回以降。
+- [ ] 実拡張ホストでの操作（Space 切り替え、プラグイン導入、バージョン確認画面）。
+
+実施内容は[2.11.1 更新記録](../reviews/workflows-2.11.1-update.md)。
+
 v2.11.0 対応作業（2026-10-09）:
 
 対象は公式 v2.11.0、タグの commit dereference で確認したコミット `6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a`。比較元は manifest の公式 v2.10.0 `2a883858f5483bce3b48f43b8f6d3ca2c042d6ae`。公式タグの独立 checkout から配布物を生成し、drift は blocking 0 / findings 5。State Version 8・基本33ステージ・14エージェントは維持。

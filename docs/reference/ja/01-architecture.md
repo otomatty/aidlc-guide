@@ -29,7 +29,7 @@ graph LR
     subgraph CONSTRUCTION["コンストラクション (3.1-3.7)"]
         C1["機能設計"]
         C7["CI パイプライン"]
-        C1 -.->|"ユニットごとに 7 ステージ"| C7
+        C1 -.->|"ユニットごとに 5 ステージ、その後 2 ステージを 1 回"| C7
     end
 
     subgraph OPERATION["オペレーション (4.1-4.7)"]
@@ -53,7 +53,7 @@ graph LR
 
 ## 5 層
 
-**ルール**（`rules/`） -- 組織とプロジェクトのガードレールです。自己学習型であり、人間の修正は永続的な振る舞いルールになります。合計およそ 35 行だけに抑えられており、AI-DLC 以外の会話でコンテキストが膨らむのを避けています。
+**ルール**（スペースのメモリ層 `aidlc/spaces/<active-space>/memory/`。`rules/aidlc.md` の @-import スタブ経由で読み込まれる） -- org、team、project、フェーズの各ルールファイルです。フレームワークの作業慣行・テスト・デプロイ・コードスタイルの既定値、Guard Policy セクション、ガードレールのセクション（`## Forbidden`, `## Mandated`, `## Corrections`）を含みます。自己学習型であり、確認された人間の修正はプラクティスとしてそこへ書き込まれます。
 
 **エージェント**（`agents/*.md`） -- 14 個のフラットなエージェントファイルです。11 のドメイン専門家ペルソナ、2 つのレビュー専用エージェント、そして適応ワークフローのコンポーザーからなります。各ファイルがロール、責務、コラボレーションパターン、ツール、関連するメモリの焦点を定義します。著述されたコアのペルソナは `disallowedTools: Task` を持ちます。パッケージャーは、対応しているハーネスではそのネイティブな拒否をそのまま保ち、対応していないハーネスには「入れ子の委譲を許さない」という同じ境界をそのハーネスのツールポリシーへ投影します。Kiro のエージェント Markdown はこの未対応キーを省略し、Kiro CLI のエージェント JSON と Kiro IDE の `tools:` 許可では、委譲先から `subagent` ツールを除外します。
 
@@ -61,7 +61,7 @@ graph LR
 - `aidlc-shared/` -- 原則、検証、ブラウンフィールド保護策、**監査イベント分類体系**（正準イベントレジストリ）、状態テンプレート
 - `aidlc-<agent>-agent/` -- エージェントごとの方法論ファイル（アーキテクチャパターン、テスト戦略など）
 
-**スキル**（`skills/aidlc/`） -- オーケストレーターのエントリポイント（`SKILL.md`。ワークフロー計画を合成するときだけ読む `composer.md` の付属文書を含む）、静的／回復／ガバナンスの各プロトコルファイルに加えて `aidlc-common/protocols/` 配下の条件付きで読み込まれるレビュアー／アンサンブル／構築／スウォームの 4 モジュール、そして 5 つのフェーズディレクトリ（`stages/initialization/`, `stages/ideation/`, `stages/inception/`, `stages/construction/`, `stages/operation/`）にまたがる 33 個のステージファイルです。
+**スキル**（`skills/aidlc/`） -- オーケストレーターのエントリポイント（`SKILL.md`。ワークフロー計画を合成するときだけ読む `composer.md` の付属文書を含む）、静的／回復／ガバナンスの各プロトコルファイルに加えて `aidlc-common/protocols/` 配下の条件付きで読み込まれるレビュアー／アンサンブル／構築／スウォーム／学びの 5 モジュール、そして `aidlc-common/stages/` 配下の 5 つのフェーズディレクトリ（`initialization/`, `ideation/`, `inception/`, `construction/`, `operation/`）にまたがる 33 個のステージファイルです。
 
 **フック**（`hooks/`） -- 監査出力（書き込み・編集後のツール使用時）、セッションライフサイクル（開始・終了）、状態同期（タスク更新後のツール使用時）、状態検証（圧縮前）、サブエージェント追跡（停止時）、ステータスライン描画のためのフレームワークフックです。フレームワークファイルはすべて `aidlc-*.ts` という接頭辞を持ちます。
 
@@ -93,7 +93,7 @@ graph LR
 
 フレームワークはワークフロー単位の成果物を生成しません。そうした出力は配布物とともに出荷しなければならず、その時点でそれはワークフロー出力ではなくフレームワーク著述のハーネス設定になるからです。この空セルは欠落ではなく、ルーティング規則の特徴です。
 
-> **フレームワーク著述 = 上流から届くもの。プロジェクト内では不変として扱います。** これはバージョン管理やファイルシステムで強制されるわけではありません。`.claude/` は編集可能な領域であり、`org.md` や `phases/*.md` をその気になれば編集できます。ただし慣例は、フレームワーク既定値を直接書き換えるのではなく、`team.md` / `project.md`（右側のセル）で上書きすることです。そうすればレビュー時にオーバーライドが可視化され、フレームワークのアップグレードもきれいに通り、同じフレームワークバージョンを共有する複数プロジェクト間のドリフトも防げます。
+> **フレームワーク著述 = 上流から届くもの。プロジェクト内では不変として扱います。** これはバージョン管理やファイルシステムで強制されるわけではありません。`.claude/` は編集可能な領域であり、`org.md` や `phases/*.md` をその気になれば編集できます。ただし慣例は、フレームワーク既定値を直接書き換えるのではなく、`team.md` / `project.md`（右側のセル）に自分たちのプラクティスを追加することです。そうすればレビュー時に追加内容が可視化され、フレームワークのアップグレードもきれいに通り、同じフレームワークバージョンを共有する複数プロジェクト間のドリフトも防げます。
 
 ### 新しい関心事を配置するための境界テスト
 
@@ -117,9 +117,9 @@ graph LR
 
 - **フレームワークのハーネスメカニクス** → メタデータ / JSON。ワークフロー順序、ステージ定義、成果物生成、ゲート意味論。ツールが決定論的に読みます。配置先は `.claude/skills/`, `.claude/tools/data/` です。
 - **フレームワークのドメインリファレンス** → `.claude/knowledge/aidlc-<agent>-agent/` 配下のエージェント KB 散文。各ドメインにおける選択肢のメニュー（5 つのブランチ戦略、デプロイメントパターン、テスト方法論）。必要になった時に所有エージェントが読みます。
-- **フレームワークの方法論既定値** → `aidlc/spaces/<active-space>/memory/org.md` にある散文。チームが別の確認をしない限りフレームワークが推奨する内容です。チームの声で書かれます（チームが上書きしないなら、組織層の既定値がそのままチームの声になるため）。
+- **フレームワークの方法論既定値** → `aidlc/spaces/<active-space>/memory/org.md` にある散文。チームが別の確認をしない限りフレームワークが推奨する内容です。チームの声で書かれます（チームが自分たちのプラクティスを追加するまでは、組織層の既定値がそのままチームの声になるため）。
 - **チームのプラクティス** → `aidlc/spaces/<active-space>/memory/team.md` にある散文。チームが選んだやり方、つまり「これが私たちの働き方」です。プラクティス発見の確認ゲートによって内容が入ります。エージェントは意思決定点で読みます（デリバリープランニングはブランチ戦略を読み、コンダクターは `SKILL.md` のウォーキングスケルトン方針を読みます）。
-- **プロジェクトオーバーライド** → `aidlc/spaces/<active-space>/memory/project.md` にある散文。チーム層と組織層の既定値を上書きする、プロジェクト固有の修正です。これもプラクティス発見の確認ゲートによって内容が入ります。
+- **プロジェクトオーバーライド** → `aidlc/spaces/<active-space>/memory/project.md` にある散文。チーム層と組織層の既定値と並んで読み込まれる、プロジェクト固有の修正です。適用されるすべての層は加算的であり、独自の解決方法を宣言するフィールドはそれぞれのリゾルバーを使います（`tier_cap` ではプロジェクトがチームと組織より優先します）。これもプラクティス発見の確認ゲートによって内容が入ります。
 - **ガードレール**（`## Forbidden`, `## Mandated`, `## Corrections` セクション） -- `org.md`, `team.md`, `project.md` に存在します。エージェント向けの是正ルール、つまり `ALWAYS X`, `NEVER Y` です。継続的にエージェントコンテキストへ読み込まれます。
 
 ### `.claude/` 直下へ置いてはいけないもの
@@ -136,7 +136,7 @@ graph LR
 - `<record>/inception/practices-discovery/team-practices.md` -- ワークフロー単位の監査証跡（下段）。
 - 確認後、内容はスペースメモリ層へコピーされます。`aidlc/spaces/<active-space>/memory/team.md` と `memory/project.md` の両方、つまりチーム著述のハーネス設定（右上セル）です。
 
-監査証跡側のコピーは、この実行で何が確認されたかを証明します。`.claude/` 側のコピーは、今後のすべてのワークフローで読み込まれるチームの常設設定になります。
+監査証跡側のコピーは、この実行で何が確認されたかを証明します。スペースメモリ側のコピーは、今後のすべてのワークフローで読み込まれるチームの常設設定になります。
 
 このパターン（走査 → 下書き → 確認 → 公開）は、構造としてはリバースエンジニアリングに一致します。違いは**結果**です。リバースエンジニアリングの確認は単に「この走査は正確だ」を意味しますが、プラクティス発見の確認は「フレームワークがこの文言を私たちの常設設定へ書き込み、今後のすべてのワークフローで読み込んでよい」を意味します。
 
@@ -164,7 +164,7 @@ graph LR
 
 **サブエージェントステージ** -- コンダクターはコンテキスト（先行成果物、プロジェクト記述、ワークスペースの所見）を準備し、Claude Code のタスクツールのサブエージェントへ委譲します。サブエージェントは自律実行し、構造化サマリーを返します。これは、実行中のユーザー対話なしで、集中した独立作業に向くステージで使われます。サブエージェント呼び出しが失敗した場合、コンダクターはコンテキストを減らしたプロンプトで 1 回再試行し、それでもだめならフォールバックとしてインライン実行か保留して再訪をユーザーへ提示します。
 
-ディスパッチ実行を使うステージは 4 つです。リバースエンジニアリング（2.1、`mode: pipeline` — 開発者の走査の後にアーキテクトが統合と書き込みを行う）、プラクティス発見（2.2、`mode: subagent` — パイプラインデプロイのリードが下書きし、互いに見えない品質 / 開発者 / DevSecOps のスポークが検査し、人間インタビューを経てリードが統合する）、ユーザーストーリー（2.4、`mode: mob` — プロダクトリードの下書きにデザイン / 開発者 / 品質のコントリビューションラウンドが続く）、コード生成（3.5、集中した開発者サブエージェント）です。collaborators が off のとき（`enterprise` 以外のすべての出荷スコープ）、最初の 3 つはリードエージェントだけで実行します。トポロジー全体は 29 インライン / 2 サブエージェント / 1 パイプライン / 1 モブです。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の内部で決定論的に実行されます。
+ディスパッチ実行を使うステージは 4 つです。リバースエンジニアリング（2.1、`mode: pipeline` — 開発者の走査の後にアーキテクトが統合と書き込みを行う）、プラクティス発見（2.2、`mode: subagent` — パイプラインデプロイのリードが下書きし、互いに見えない品質 / 開発者 / DevSecOps のスポークが検査し、人間インタビューを経てリードが統合する）、ユーザーストーリー（2.4、`mode: mob` — プロダクトリードの下書きにデザイン / 開発者 / 品質のコントリビューションラウンドが続く）、コード生成（3.5、ビルドには集中した開発者サブエージェント。人の承認前の計画ステップはインラインでコンダクター自身のコンテキストで実行され、ステップがその旨を伝える）です。collaborators が off のとき（`enterprise` 以外のすべての出荷スコープ）、最初の 3 つはリードエージェントだけで実行します。トポロジー全体は 29 インライン / 2 サブエージェント / 1 パイプライン / 1 モブです。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の内部で決定論的に実行されます。
 
 ```mermaid
 flowchart LR
@@ -221,7 +221,7 @@ sequenceDiagram
     O->>U: 質問を提示する（3 モード）
     U-->>O: 回答を返す
     O->>O: 成果物を生成する
-    O->>O: audit.md に記録する
+    O->>O: 監査シャードに記録する
     O->>U: 完了 + 承認ゲートを提示する
     U-->>O: 承認 / 変更依頼
     O->>ST: 承認を報告する（エンジンが `[x]` を付けてルーティングする）
@@ -304,14 +304,14 @@ Markdown の振る舞いは、ツールを実行する Bun に従います。ネ
 
 ### 生成物の識別情報と所有権
 
-各ハーネスの `tools/data/` には、役割の異なるメタデータがあります。
+各ハーネスの `tools/data/` には、役割の異なる 4 つのメタデータ契約があります。
 
-- `harness.json` は実行時設定です。配布名、製品名、次の操作の文言、ハーネスとルールのディレクトリ、プラグイン選択、および任意の `models`、`runtime`、`providers`、`trust`、`flags`、`project` レコードなど、変更可能なプロジェクト設定を保持します。
+- `harness.json` は実行時設定です。配布名、製品名、次の操作の文言、ハーネスとルールのディレクトリ、プラグイン選択、および任意の `runtime`、`providers`、`trust`、`project` レコードなど、変更可能なプロジェクト設定を保持します。モデルポリシーとフラグはここには保持しません。それらは `aidlc.settings.json`（プロジェクト）、`aidlc.settings.local.json`（このチェックアウト）、マシンの設定ファイルに置かれ、まだ `models` や `flags` を持つ `harness.json` は、それらを削除して `aidlc config` を実行するよう伝える 1 行とともに拒否されます。
 - `agent-tiers.json` は `core/agents/*.md` のフロントマターから生成するエージェント名とティアの対応表です。実行時のモデルポリシーは、エージェント一覧をコードに固定せず、このファイルを読みます。
 - `aidlc-stamp.json` は変更しない生成物の識別情報です。スキーマ、フレームワークのバージョン、配布名、ハーネスディレクトリを記録します。
 - `aidlc-projection.json` は全出力を網羅するインストール定義です。すべての最上位出力を、フレームワーク管理ディレクトリかルート統合に分類します。ルート統合には型付きの統合ポリシーを 1 つ指定します。`managed-block`、`json-map`、`json-array`、`whole-file`、`jsonc-settings`（エディターの JSONC 設定ファイルをキー単位で編集します。出荷するキーは存在しないときだけ追加し、他のすべてのキーとコメントを保ち、コピー形式のランタイムからは除外します）、`json-entries`（`opencode.json` のようなチームの JSON ファイルに対して、同じことをどの深さでも行います。AI-DLC の値と配列の文字列は存在しないときに追加し、変更されていない間だけ追従または削除します。その部分は root-blocks に含めて出荷し、コピー形式のランタイムはこのファイルを除外します）のいずれかです。2.10.0 のインストールは、知らないポリシーを名指しする定義を持つリリースを拒否するので、それ以降に追加したポリシー（`jsonc-settings`、`json-entries`）は `whole-file` として書き、本来のポリシーを `extendedPolicy` に入れ、すべての読み手がそれを元に戻します（`core/tools/aidlc-distribution.ts` の `writtenRootIntegration` と `readRootIntegrations`。`tests/unit/t-previous-release-validates-runtime.test.ts` は、すべてのランタイムツリーに対して 2.10.0 自身の検査を実行します）。任意の統合や旧コピーの正確なハッシュもここに宣言します。未分類の最上位項目があると、パッケージ作成または読み込みは失敗します。
 
-`aidlc config` は計画を作る前に stamp とインストール定義を検証します。インストール先には、4 つ目のファイル `aidlc-manifest.json` をプロジェクト固有の基準として書き込みます。内容は upstream バージョン、各ファイルのハッシュ、Claude設定とCodexテーブルの出荷時エントリのハッシュ、ルートへの追加内容、任意の統合の選択モードです。更新時はこの基準を使い、変更されていない管理ファイルを更新し、ローカルの変更を保護し、ルート統合をマージし、廃止した管理対象を削除します。ネイティブ定義に記録したコピー用ハッシュと一致する、未変更の旧コピーインストールは引き継げます。未知の内容をフレームワーク所有と推測することはありません。ハーネスディレクトリの下にあるプロジェクト自身のファイル（チームのスキル、合成したスコープ、プラグインのサイドカー）は、コンパイルのために一時配置しますが記録はせず、マニフェストはそのことを `shippedOnly` で示します。この印のないマニフェストはそのようなファイルを記録している可能性があるので、更新時は、そこに記録されたファイルのうちリリースが出荷しないものを保持し、記録だけをやめます。
+`aidlc config` は計画を作る前に stamp とインストール定義を検証します。インストール先には、5 つ目のファイル `aidlc-manifest.json` をプロジェクト固有の基準として書き込みます。内容は upstream バージョン、各ファイルのハッシュ、Claude設定とCodexテーブルの出荷時エントリのハッシュ、ルートへの追加内容、任意の統合の選択モードです。更新時はこの基準を使い、変更されていない管理ファイルを更新し、ローカルの変更を保護し、ルート統合をマージし、廃止した管理対象を削除します。ネイティブ定義に記録したコピー用ハッシュと一致する、未変更の旧コピーインストールは引き継げます。未知の内容をフレームワーク所有と推測することはありません。ハーネスディレクトリの下にあるプロジェクト自身のファイル（チームのスキル、合成したスコープ、プラグインのサイドカー）は、コンパイルのために一時配置しますが記録はせず、マニフェストはそのことを `shippedOnly` で示します。この印のないマニフェストはそのようなファイルを記録している可能性があるので、更新時は、そこに記録されたファイルのうちリリースが出荷しないものを保持し、記録だけをやめます。
 
 ### モデルポリシーの反映
 
@@ -369,7 +369,7 @@ Markdown の振る舞いは、ツールを実行する Bun に従います。ネ
 
 オフラインでは検証できないプロバイダー操作は、小さな保留操作一覧として保存します。config と doctor は操作 ID から説明文を生成し、レコードには ID と pending/done だけを保持します。
 
-信頼設定の診断は既存のホスト設定を読みます。Codex はユーザー設定内のプロジェクト固有シード一式、Kiro IDE はインストール済みの trusted command、Copilot は Copilot CLI の `trustedFolders`、各ハーネスは必要な兄弟ディレクトリを確認します。config trust は信頼シードや許可ルールの生成処理を呼ばず、Copilot CLI の `config.json` にも決して書き込みません。本人を CLI 自身の信頼の確認へ案内します。
+信頼設定の診断は既存のホスト設定を読みます。Codex はユーザー設定内のプロジェクト固有シード一式、Kiro IDE はインストール済みの trusted command、Copilot は Copilot CLI の `trustedFolders`、各ハーネスは必要な兄弟ディレクトリを確認します。config trust は信頼シードや許可ルールの生成処理を呼ばず、Copilot CLI の `config.json` にも決して書き込みません。本人を CLI 自身の信頼の確認へ案内します。Kiro IDE では、Kiro の Workflows スイッチ（`kiroAgent.workflows.enabled`、ユーザー設定のみ）も読みます。これはチャットからサブエージェントツールを取り上げるものです。`core/tools/aidlc-kiro-ide-workflows.ts` は、本人の回答（`--kiro-workflows`、setup、`config --yes`、またはセッション開始時のマシンごとに 1 回のチャットでの問い合わせ）に応じてその 1 つの JSONC キーを変更し、その回答をインストールルートの `kiro-ide-workflows` マーカーに保持します。JSONC として読めない設定ファイルは、off ではなく不明として報告され（trust、setup、doctor）、セッション開始はエラーごとに 1 回チャットに伝え、ファイルのパスとフィンガープリントを `kiro-ide-settings-error-told` マーカーに保持します。Windows では Kiro の既定のターミナルプロファイル（`terminal.integrated.defaultProfile.windows`）も読みます。コマンドプロンプトでは、エージェントの AI-DLC コマンドが本人の言葉を分割してしまい、すべてのコマンドが終了コード -1 を報告するため、`core/tools/aidlc-kiro-ide-terminal.ts` が同じ種類の回答（`--kiro-terminal powershell`）に応じてそれを PowerShell に設定し、`kiro-ide-terminal` マーカーに保持します。そのターミナル（TERM_PROGRAM=kiro で、チャットのフックが記録したシェル）では、各ツールのエントリが `AI-DLC reply:` のポインター行の背後で子プロセスとしてツールを実行し、返答を `aidlc/.aidlc-sessions/replies/` の下に保持します。また、cmd.exe が引数に残した一重引用符の組を結合し直します。エンジンは返答を fd 1 へ直接書き込み、Kiro はコマンドを送ってから 1 秒後にターミナルを読むためです。
 
 dry-run 以外の config トランザクションが成功すると、インストール済み内容に対して軽量な適用後診断を行います。ランタイム診断は非対話 PATH 上で実際のフックが必要とするバイナリだけを解決し、ハーネス CLI のバージョン検査は省きます。信頼設定はホスト設定を読み、プロバイダーは記録済みの保留操作だけを読みます。通常出力と quiet 出力には必要な機能別の後続操作を表示し、JSON には構造化した `outstandingActions` 配列を返します。トランザクションは成功しているため、終了コードは 0 です。
 
@@ -377,7 +377,7 @@ doctor は `tools/data/aidlc-manifest.json` から指示ファイルの診断項
 
 ### フラグとプロジェクトの選択
 
-`aidlc config flags` はスキーマバージョン付きの `flags` レコードを `harness.json` に保存します。`readShippedHarnessData` は既存のプラグイン選択とともにこれを読み、`resolveProjectFlag` が環境変数を優先する共通の参照処理を提供します。既存のツールとフックは環境変数の動作を保ち、変数がない場合だけレコードの値を使います。コンダクターが管理する swarm の選択も同じ優先順位です。
+`aidlc config flags` はスキーマバージョン付きの `flags` レコードを、対象が指す設定ファイルに保存します。`--project` は `aidlc.settings.json` に、`--local` は `aidlc.settings.local.json` に、`--global` はマシンの設定ファイルに書き込みます。`resolveProjectFlag` が、これらの層に対して環境変数を優先する共通の参照処理を提供します。既存のツールとフックは環境変数の動作を保ち、変数がない場合だけレコードの値を使います。コンダクターが管理する swarm の選択も同じ優先順位です。
 
 flags レコードには既定スコープ、swarm、フックのデバッグ、センサーのタイムアウト、文書化された固定のバイパス環境変数群を含めます。スコープ検証はインストール済みのフロントマターを読みます。Claude の設定生成では `AWS_AIDLC_DEFAULT_SCOPE` も更新します。これを行わないと、出荷時のセッション環境変数がレコードより優先されるためです。
 
@@ -413,7 +413,7 @@ MCP への同意は同じトランザクション中と後続の通常更新で�
 
 `scripts/build-binaries.ts` は配布ツリーを再生成し、`dist-release/claude/.claude/tools/aidlc.ts` からディスパッチャーをコンパイルします。各対象バイナリの隣に全ネイティブランタイムを配置してスモーク検証し、`build-results-<target>.json` を書きます。ホストで実行できる成果物は、ネイティブ実行と最終配置に対する検証一式を通った場合だけ `VERIFIED` になります。クロスビルド成果物は `inspection-only` の証拠を伴う `UNVERIFIED` として明示します。
 
-`scripts/package-release.ts` はローカルの配布ツリーを再生成し、2 回のビルドで決定性を検証します。ビルド結果のレコードを検証し、リリースモードでは 7 対象すべてが揃っていることも確認します。各 `dist-release/<harness>/` と Bun 用 `aidlc-copy-runtime-X.Y.Z.tar.gz` をアーカイブ化し、フラットな `version.json`、`checksums.txt`、両インストーラー、バイナリを出力します。一時公開ジョブは候補を再検証し、署名せずアップロードします。Unix と Windows のライフサイクルジョブは、そのチェックサムを検証してテストします。`update-from-previous` ジョブは、Linux、macOS、Windows で、直前の安定版リリースをそれ自身のインストーラーでインストールし、すべてのハーネスのプロジェクトを準備し、候補へ `aidlc update` を実行して、各プロジェクトのフック、`aidlc config --yes` による更新、doctor がまだ動くことを確認します。これに失敗すると安定版リリースは公開されず、プレビュー版は注記に警告を付けて公開されます。`publish` は同じ候補を取得・再検証して証明を付け、書き出した `aidlc-release.intoto.jsonl` バンドルを追加し、全ファイル一覧を検証して、1 つの `attested-release` ワークフロー成果物をアップロードします。`release` はタグとチェックサムを再確認し、このリポジトリの `GITHUB_TOKEN` で GitHub Release を作り、公開済みの全ファイルを検証します。バンドルは独立した信頼経路なので、`version.json` と `checksums.txt` には含めません。このパイプラインでは、将来予定の npm チャネルは実装していません。[サプライチェーンセキュリティ](19-supply-chain-security.md) を参照してください。
+`scripts/package-release.ts` はローカルの配布ツリーを再生成し、2 回のビルドで決定性を検証します。ビルド結果のレコードを検証し、リリースモードでは 7 対象すべてが揃っていることも確認します。各 `dist-release/<harness>/` と Bun 用 `aidlc-copy-runtime-X.Y.Z.tar.gz` をアーカイブ化し、フラットな `version.json`、`checksums.txt`、両インストーラー、バイナリを出力します。一時公開ジョブは候補を再検証し、署名せずアップロードします。Unix と Windows のライフサイクルジョブは、そのチェックサムを検証してテストします。`update-from-previous` ジョブは、Linux、macOS、Windows で、直前の安定版リリースをそれ自身のインストーラーでインストールし、本人の作業がゲートで待っている状態ですべてのハーネスのプロジェクトを準備し、候補へ `aidlc update` を実行して、各プロジェクトのフック、`aidlc config --yes` による更新、doctor がまだ動くこと、そして本人が何も聞き直されずにそのゲートから作業を再開できることを確認します。そのコピー側の経路は、直前のリリースのコピー形式ランタイムからコピーされたプロジェクトに対して同じことを行い、それらは自身の `config --from` で更新します。これに失敗すると安定版リリースは公開されず、プレビュー版は注記に警告を付けて公開されます。`publish` は同じ候補を取得・再検証して証明を付け、書き出した `aidlc-release.intoto.jsonl` バンドルを追加し、全ファイル一覧を検証して、1 つの `attested-release` ワークフロー成果物をアップロードします。`release` はタグとチェックサムを再確認し、このリポジトリの `GITHUB_TOKEN` で GitHub Release を作り、公開済みの全ファイルを検証します。バンドルは独立した信頼経路なので、`version.json` と `checksums.txt` には含めません。このパイプラインでは、将来予定の npm チャネルは実装していません。[サプライチェーンセキュリティ](19-supply-chain-security.md) を参照してください。
 
 ## ディレクトリ構造
 
@@ -424,15 +424,26 @@ dist/claude/.claude/
 +-- CLAUDE.md
 +-- settings.json
 +-- hooks/
-|   +-- aidlc-write-audit-log.ts
+|   +-- aidlc-continue-workflow.ts
+|   +-- aidlc-deliver-stage-rules.ts
+|   +-- aidlc-fold-usage.ts
+|   +-- aidlc-log-subagent.ts
+|   +-- aidlc-plan-approval-guard.ts
+|   +-- aidlc-rebuild-stage-graph.ts
+|   +-- aidlc-record-human-turn.ts
+|   +-- aidlc-review-freeze.ts
+|   +-- aidlc-reviewer-scope.ts
+|   +-- aidlc-run-sensors.ts
+|   +-- aidlc-session-end.ts
+|   +-- aidlc-session-start.ts
+|   +-- aidlc-state-transition-guard.ts
+|   +-- aidlc-statusline.ts
 |   +-- aidlc-sync-workflow-state.ts
 |   +-- aidlc-validate-state.ts
-|   +-- aidlc-log-subagent.ts
-|   +-- aidlc-session-start.ts
-|   +-- aidlc-session-end.ts
-|   +-- aidlc-statusline.ts
+|   +-- aidlc-write-audit-log.ts
+|   +-- review-freeze-command.ts, runtime-integrity.ts   # helpers the hooks import
 +-- rules/
-|   +-- aidlc.md                  # @-import stub -> ../../aidlc/spaces/<active-space>/memory/ (NOT a copy; re-pointed in place on `space` switch)
+|   +-- aidlc.md                  # @-import stub -> ../../aidlc/active-memory/ (the engine's git-ignored copy of the active space's memory)
 +-- agents/
 |   +-- aidlc-product-agent.md
 |   +-- aidlc-design-agent.md
@@ -478,54 +489,70 @@ dist/claude/.claude/
 |   |   +-- re-artifacts.md
 |   +-- [... 8 more agent knowledge dirs]
 +-- skills/
-    +-- aidlc/
-        +-- SKILL.md
-        +-- stage-protocol.md
-        +-- stage-protocol-recovery.md
-        +-- stage-protocol-governance.md
-        +-- stage-protocol-reviewer.md
-        +-- stage-protocol-ensemble.md
-        +-- stage-protocol-construction.md
-        +-- stage-protocol-swarm.md
-        +-- stages/
-            +-- initialization/
-            |   +-- workspace-scaffold.md
-            |   +-- workspace-detection.md
-            |   +-- state-init.md
-            +-- ideation/
-            |   +-- intent-capture.md
-            |   +-- market-research.md
-            |   +-- feasibility.md
-            |   +-- scope-definition.md
-            |   +-- team-formation.md
-            |   +-- rough-mockups.md
-            |   +-- approval-handoff.md
-            +-- inception/
-            |   +-- reverse-engineering.md
-            |   +-- practices-discovery.md
-            |   +-- requirements-analysis.md
-            |   +-- user-stories.md
-            |   +-- refined-mockups.md
-            |   +-- domain-design.md
-            |   +-- units-generation.md
-            |   +-- contract-design.md
-            |   +-- delivery-planning.md
-            +-- construction/
-            |   +-- functional-design.md
-            |   +-- nfr-requirements.md
-            |   +-- nfr-design.md
-            |   +-- infrastructure-design.md
-            |   +-- code-generation.md
-            |   +-- build-and-test.md
-            |   +-- ci-pipeline.md
-            +-- operation/
-                +-- deployment-pipeline.md
-                +-- environment-provisioning.md
-                +-- deployment-execution.md
-                +-- observability-setup.md
-                +-- incident-response.md
-                +-- performance-validation.md
-                +-- feedback-optimization.md
+|   +-- aidlc/
+|   |   +-- SKILL.md
+|   |   +-- composer.md
+|   |   +-- question-rendering.md
+|   +-- [... runner and session skills]
++-- aidlc-common/
+    +-- conductor.md
+    +-- protocols/
+    |   +-- stage-definition.md
+    |   +-- stage-protocol.md
+    |   +-- stage-protocol-recovery.md
+    |   +-- stage-protocol-governance.md
+    |   +-- stage-protocol-reviewer.md
+    |   +-- stage-protocol-reviewer-unit.md
+    |   +-- stage-protocol-reviewer-repair.md
+    |   +-- stage-protocol-ensemble.md
+    |   +-- stage-protocol-collaborators.md
+    |   +-- stage-protocol-construction.md
+    |   +-- stage-protocol-checkpoint.md
+    |   +-- stage-protocol-loopback.md
+    |   +-- stage-protocol-wave.md
+    |   +-- stage-protocol-swarm.md
+    |   +-- stage-protocol-learnings.md
+    |   +-- stage-protocol-summary.md
+    |   +-- stage-protocol-sensors.md
+    +-- stages/
+        +-- initialization/
+        |   +-- workspace-scaffold.md
+        |   +-- workspace-detection.md
+        |   +-- state-init.md
+        +-- ideation/
+        |   +-- intent-capture.md
+        |   +-- market-research.md
+        |   +-- feasibility.md
+        |   +-- scope-definition.md
+        |   +-- team-formation.md
+        |   +-- rough-mockups.md
+        |   +-- approval-handoff.md
+        +-- inception/
+        |   +-- reverse-engineering.md
+        |   +-- practices-discovery.md
+        |   +-- requirements-analysis.md
+        |   +-- user-stories.md
+        |   +-- refined-mockups.md
+        |   +-- domain-design.md
+        |   +-- units-generation.md
+        |   +-- contract-design.md
+        |   +-- delivery-planning.md
+        +-- construction/
+        |   +-- functional-design.md
+        |   +-- nfr-requirements.md
+        |   +-- nfr-design.md
+        |   +-- infrastructure-design.md
+        |   +-- code-generation.md
+        |   +-- build-and-test.md
+        |   +-- ci-pipeline.md
+        +-- operation/
+            +-- deployment-pipeline.md
+            +-- environment-provisioning.md
+            +-- deployment-execution.md
+            +-- observability-setup.md
+            +-- incident-response.md
+            +-- performance-validation.md
+            +-- feedback-optimization.md
 ```
 
 ### ワークスペース: スペースとインテント
@@ -555,10 +582,21 @@ aidlc/                                    # neutral, harness-independent, commit
 ```
 
 **解決。** ワークフローのアイデンティティは、ライブラリ内の単一のチョークポイントで、
-`in-process sessionId > AIDLC_SESSION_OVERRIDE > CODEX_THREAD_ID
-(Codex tools only) > PID ancestry > none` という優先順位で
+`in-process sessionId > AIDLC_SESSION_OVERRIDE > the chat the host
+names in the agent's shell (CODEX_THREAD_ID; CLAUDE_CODE_SESSION_ID while its
+CLAUDE_PID process is alive; KIRO_SESSION_ID) > PID ancestry > none` という優先順位で
 解決されます。フックペイロードのアイデンティティはインプロセスの選択肢を使い、これが
-正式な情報源です。不正な環境変数値は無視されます。祖先関係と食い違う有効な環境上書きは、
+正式な情報源です。
+ホストまたはフックペイロードがチャットを名指しするときは、プロセスの祖先はまったく辿りません。
+その答えが結果を変えることはあり得ないためです。
+そこで得られたどの ID も、バインディングを読む前に `resolveChat` を通ります。ヘルパーの ID は、
+アダプターが書いた `<id>.helper-of` 記録を通じてそのルートのチャットへ対応付けられます（Codex の
+エージェントとレビュースレッド、Kiro CLI の委譲、Copilot のサブエージェント）。バインディングの
+ないチャットは、SessionStart が新しいチャットに適用するのと同じ規則（`classifyFirstContact`）で
+最初の接触時に結び付けられるため、エンジンがコマンドの中で初めて出会ったチャットは、そのとき
+選択した作業にとどまります。セッションのアイデンティティをまったく持たないプロセスだけが、
+共有カーソルを直接読みます。
+不正な環境変数値は無視されます。祖先関係と食い違う有効な環境上書きは、
 バインディングやワークフロー記録のパスが導出される前に、型付きの拒否を投げます。
 明示的なセレクターと、その結果生じるマシンローカルなセッションバインディングが、
 共有される 2 つの利用者ごとカーソルより優先されます。
@@ -573,7 +611,7 @@ aidlc/                                    # neutral, harness-independent, commit
   実在の記録を指す場合）`> lone-intent > null` です。`null` のインテントは
   「まだ記録が存在しない」を意味し、オーケストレーターが最初のインテントを自動作成する合図になります。
 
-**参加。** 解決は記録を名指ししますが、この会話がその記録へ書き込んだり、その記録に止められたりしてよいかどうかは決めません。それを決めるのは `workflowParticipation()` で、マシンローカルな証拠だけから判断します。証拠は、`source` が選択を記録しているバインディング（`create`、`migration`、`switch`、`space-switch-cursor`、`cursor`、`stamp`）、またはその記録を名指しする `active-intent` カーソルです。さらに、保存された source として信頼するのではなく呼び出しのたびに確認し直すものとして、検証済みの委譲されたワークツリー、このワークツリー自身のメタデータ（作成元リポジトリの git common dir と照合します）、そのインテントについてこのマシンで claim した Unit があります。コマンドの出力でしか見えない作成は、記録の gitignore 対象のエンジンディレクトリに intent create の 1 回限りのレシートがあれば `create` として数えます。再開時、バインディングのないセッションは自身の UUID の刻印に従い、その記録を `stamp` として結び付けます。刻印されるのは参加したセッションだけです。選択なしに結び付けるライター（`observed-create`、`space-switch-lone`）は刻印を消すからです。コミット済みの記録が 1 つだけあることや、カーソルが別の記録を名指ししている source なしのバインディングは証拠になりません。そのため、AI-DLC のワークツリーメタデータを持たない素の `git worktree` は、インテントを明示的に選びます。フックは呼び出しごとに一度分類し、ペイロードのセッションを固定するので、その書き込みも同じ選択を使います。選択されたワークフローの外にある会話は、そこへ何も書き込まず、そのゲートにも止められません。一方、ランタイムの完全性、ライフサイクルコマンドの直接の拒否、claim したチェックアウトの書き込み範囲は引き続き適用されます。エンジンはそのような会話を、アクティブなインテントがないものとして扱います（`next` はどのインテントで作業するかを尋ね、`continue`、`report`、`park` は拒否します）。兄弟だけのワークツリーの委譲メタデータが不正または古いために参加を判断できないときは、ワークフローを選択しません。フックは何も書き込まず、レビュアーの読み取り範囲はフェイルオープンし、ゲートは退かないので Plan Approval は変更を拒否し、エンジンは修復すべきファイル（`.aidlc/worktree-meta.json`）か、作業すべき親チェックアウトを示して拒否します。
+**参加。** 解決は記録を名指ししますが、この会話がその記録へ書き込んだり、その記録に止められたりしてよいかどうかは決めません。それを決めるのは `workflowParticipation()` で、マシンローカルな証拠だけから判断します。証拠は、`source` が選択を記録しているバインディング（`create`、`migration`、`switch`、`space-switch-cursor`、`cursor`、`stamp`）、またはその記録を名指しする `active-intent` カーソルです。さらに、保存された source として信頼するのではなく呼び出しのたびに確認し直すものとして、検証済みの委譲されたワークツリー、このワークツリー自身のメタデータ（作成元リポジトリの git common dir と照合します）、そのインテントについてこのマシンで claim した Unit があります。コマンドの出力でしか見えない作成は、記録の gitignore 対象のエンジンディレクトリに intent create の 1 回限りのレシートがあれば `create` として数えます。再開時、バインディングのないセッションは自身の UUID の刻印に従い、その記録を `stamp` として結び付けます。刻印されるのは参加したセッションだけです。選択なしに結び付けるライター（`observed-create`、`space-switch-lone`）は刻印を消すからです。コミット済みの記録が 1 つだけあることや、カーソルが別の記録を名指ししている source なしのバインディングは証拠になりません。そのため、AI-DLC のワークツリーメタデータを持たない素の `git worktree` は、インテントを明示的に選びます。フックは呼び出しごとに一度分類し、ペイロードのセッションを固定するので、その書き込みも同じ選択を使います。選択されたワークフローの外にある会話は、そこへ何も書き込まず、そのゲートにも止められません。一方、ランタイムの完全性、ライフサイクルコマンドの直接の拒否、claim したチェックアウトの書き込み範囲は引き続き適用されます。エンジンはそのような会話を、アクティブなインテントがないものとして扱います（`next` はどのインテントで作業するかを尋ね、`continue`、`report`、`park` は、エージェント向けの手順を示して拒否します。作業を一覧し、依頼が対象とするものを選び、同じコマンドをもう一度実行する、という手順です）。兄弟だけのワークツリーの委譲メタデータが不正または古いために参加を判断できないときは、ワークフローを選択しません。フックは何も書き込まず、レビュアーの読み取り範囲はフェイルオープンし、ゲートは退かないので Plan Approval は変更を拒否し、エンジンは修復すべきファイル（`.aidlc/worktree-meta.json`）か、作業すべき親チェックアウトを示して拒否します。
 
 セッションバインディングは
 `aidlc/.aidlc-sessions/<safe-session-id>.binding.json` に置かれます。生成された（spawn された）ツールは、
@@ -587,28 +625,31 @@ SessionStart は、訪れた各 PID の以前のセッションを、識別子�
 
 Codex アダプターはさらに、検証済みのペイロードアイデンティティをすべての POSIX Bash
 コマンドとコアフックの子プロセスへピン留めするため、サンドボックス化された macOS は
-`ps` の祖先関係に依存しません。Windows x64/arm64 の祖先の照会は、安定した `OpenProcess` ハンドルを使い、`NtQueryInformationProcess(ProcessBasicInformation)`、`GetProcessTimes`、待機時間 0 のプロセスオブジェクトの生存検査を行います。ネイティブの 48 バイト構造体の戻り長と PID を検証し、どの経路でもプロセスハンドルを閉じます。作成時刻は PID のレシートに精度を失わず保存します。各親は子より前に生成されていなければならないので、再利用された親の PID が、より新しいプロセスへの照会に加わることはありません。検証済みの Windows の作成時刻を持たないレシートは、セッションの所有権を確立しません。照会の失敗、曖昧な親子関係、既存の 50 ms／64 階層の予算の使い切りでは、祖先のセッションを返しません。null の障壁と否定キャッシュは既存の振る舞いを保ちます。Linux と macOS の照会は変わりません。
+`ps` の祖先関係に依存しません。Windows x64/arm64 の祖先の照会は、安定した `OpenProcess` ハンドルを使い、`NtQueryInformationProcess(ProcessBasicInformation)`、`GetProcessTimes`、待機時間 0 のプロセスオブジェクトの生存検査を行います。ネイティブの 48 バイト構造体の戻り長と PID を検証し、どの経路でもプロセスハンドルを閉じます。作成時刻は PID のレシートに精度を失わず保存します。各親は子より前に生成されていなければならないので、再利用された親の PID が、より新しいプロセスへの照会に加わることはありません。検証済みの Windows の作成時刻を持たないレシートは、セッションの所有権を確立しません。照会の失敗、曖昧な親子関係、2 秒／64 階層の上限の使い切りでは、祖先のセッションを返しません。null の障壁と否定キャッシュは既存の振る舞いを保ちます。Linux は各段で `/proc` を読みます。macOS は辿るたびに 1 回の `ps` 呼び出しでプロセス表全体（pid、親、`lstart`）を読み、各段をそこから辿ります。記録される開始時刻は、pid ごとの照会が出力する文字列です。1 つのプロセスはその表を最大 1 秒（否定キャッシュの期間）再利用し、SessionStart の書き込みがそれを消去します。上限はどの OS でも同じで、終わらない辿り（応答しない `ps`）を区切るだけです。辿りは答えが得られた時点で終わり、アイドル状態のマシンでは数ミリ秒で済みます。負荷の高いマシンでも、チャットを見失うことなく最後まで辿ります。
 
-POSIX のコマンド書き換えは Windows には適用しません。複数の Kiro IDE のチャットや opencode のセッションは、依然として 1 つのプロセスを共有することがあり、プロセスの祖先ではそれらの会話を区別できません。祖先を照会できないか曖昧な場合、生成されたツールは、ペイロードを持つフックかハーネスのプロセスが `AIDLC_SESSION_OVERRIDE` を与えない限り、共有カーソルの動作を使います。
+複数の Kiro IDE のチャットや opencode のセッションは、依然として 1 つのプロセスを共有することがあり、プロセスの祖先ではそれらの会話を区別できません。AI-DLC の opencode プラグインは、各シェルコマンドにそのチャットを `AIDLC_SESSION_OVERRIDE` として渡します（opencode の `shell.env` フック）。ファイル書き込みの監査とセンサー、そして To-Do リストの同期は、そこでは引き続きプロセスに従います。祖先を照会できないか曖昧な場合、生成されたツールは、ペイロードを持つフックかハーネスのプロセスが `AIDLC_SESSION_OVERRIDE` を与えない限り、共有カーソルの動作を使います。
 
 プロジェクトを認識するパスヘルパーも同じ選択の階段で解決します。明示的なセレクター、
 次にセッションバインディング、最後のフォールバックとして共有カーソルの順です。
 解決済みの `intent:null` を受け取ったヘルパーは、素のスペースルートを選ぶ際に、
 その選択されたスペースを保持します。
 `/aidlc space <name>` でスペースを切り替えると、
+切り替え先スペースの `memory/` のファイルが `aidlc/active-memory/` にも書き込まれます。これは、
 各ハーネス固有のルール取り込み（上で述べた Claude の `@` による取り込み用スタブ、
-Kiro CLI のリソースまたは Kiro IDE のステアリング、Codex のルールディレクトリ、opencode の `instructions` グロブ、Copilot の `AGENTS.md` `@` 取り込み）も切り替え先スペースの
-`memory/` を指すよう再ポイントされます。`default` では再ポイントはバイト単位で同一の無操作なので、
-単一チームのコミット済みツリーが無駄に書き換わることはありません。SessionStart は
-この再ポイントに解決済みのセッションスペースを使いますが、この取り込みはチェックアウト
-全体で 1 つの可変サーフェスのままです。つまり、ワークフローの選択はスペースをまたいで
+Kiro CLI のリソース、Cursor のルール、opencode の `instructions` グロブ、Copilot の `AGENTS.md` `@` 取り込み。
+Kiro IDE のステアリングファイルはテキストそのものを持ち、Codex には取り込みがなく、エンジンが各ステップに
+ルールを渡します）が読む、git 管理対象外のコピーです。追跡対象のファイルは変わらないので、
+コミット済みツリーが無駄に書き換わることはなく、チームメイトはそれぞれ自分のスペースを保ちます。
+SessionStart は解決済みのセッションスペースのコピーを書き込みますが、このコピーはチェックアウト
+全体で 1 つのサーフェスのままです。つまり、ワークフローの選択はスペースをまたいで
 セッションに束縛される一方、複数スペースへのアンビエントなメソッド配信が同時に起きると
 依然として競合し得ます。
 
 **コミット対象と無視設定。** `aidlc/` はチームで作業を共有するためチェックインされます。
 その分割（`harness/claude/dot-gitignore`）は次のとおりです。2 つのカーソル
 （`active-space`, `active-intent`）、クローンごとのランタイム（`.aidlc-clone-id`,
-`.aidlc-sessions/`）、派生状態（`runtime-graph.json`、記録配下の `.aidlc-*`）
+`.aidlc-sessions/`）、アクティブなスペースの方法論のエンジンによるコピー
+（`active-memory/`）、派生状態（`runtime-graph.json`、記録配下の `.aidlc-*`）
 は **無視対象**です。一方で、方法論（`memory/**`）、ナレッジ（`knowledge/**`,
 `codekb/**`）、`intents.json` レジストリ、各記録の `aidlc-state.md`、`audit/`
 の分割記録、成果物は **コミット対象**です。監査はクローンごとの分割記録
@@ -624,23 +665,23 @@ Kiro CLI のリソースまたは Kiro IDE のステアリング、Codex のル�
 
 3. **2 リンクのリバースエンジニアリングパイプライン** -- リバースエンジニアリング（`mode: pipeline`）では、まずコード走査のための開発者サブエージェント、次に統合と成果物書き込みのためのアーキテクトサブエージェントを使います。コンダクターがバスとなり（Claude Code ではサブエージェントがサブエージェントを起動できません）、開発者のコード走査結果をアーキテクトへ渡します。これはチェーントポロジーが設計どおりに機能している姿です。
 
-4. **`aidlc-state.md` による状態追跡** -- 単一の Markdown 状態ファイルが、ステージ完了状況、現在ステータス、ワークスペース文脈、スコープ設定、実行計画、ランタイム状態（改訂回数と、receiptに結び付く`Construction Verification Command`を含むConstruction設定）を追跡します。ステージは結果をオーケストレーションエンジンへ報告します。エンジンの内部状態遷移がこのファイルを更新し、ライフサイクル監査行を出力し、原子的にルーティングします。ステージの散文がライフサイクルのチェックボックスを直接編集することは決してありません。ツール使用後フックが、書き込みのたびに状態ファイル構造を検証します。ステージレベルのタスク ID は状態ファイルへ保存せず、実行時に `TaskList` から解決されます（`"Inception - Requirements Analysis"` のような件名で照合）。これはコンテキスト圧縮後でも実際のタスクシステム状態を反映するため、より堅牢です。
+4. **`aidlc-state.md` による状態追跡** -- 単一の Markdown 状態ファイルが、ステージ完了状況、現在ステータス、ワークスペース文脈、スコープ設定、実行計画、ランタイム状態（改訂回数と、receiptに結び付く`Construction Verification Command`を含むConstruction設定）を追跡します。ステージは結果をオーケストレーションエンジンへ報告します。エンジンの内部状態遷移がこのファイルを更新し、ライフサイクル監査行を出力し、原子的にルーティングします。ステージの散文がライフサイクルのチェックボックスを直接編集することは決してありません。圧縮前フックが、コンテキスト圧縮の前に状態ファイル構造を検証します。ステージレベルのタスク ID は状態ファイルへ保存せず、実行時に `TaskList` から解決されます（`"Inception - Requirements Analysis"` のような件名で照合）。これはコンテキスト圧縮後でも実際のタスクシステム状態を反映するため、より堅牢です。
 
 5. **共有契約としてのステージプロトコル** — 33 ステージが stage-protocol.md を読み、承認ゲート・3 つの質問モード・完了メッセージ・状態追跡を共有します。Recovery と governance は条件付きです。reviewer・ensemble・Construction・swarm・§13 learnings の 5 モジュールは directive.protocol_modules で選択します。learnings が日誌と学びの手続きを所有し、指定がなければどちらも実施しません。
 
-6. **2 層ナレッジアーキテクチャ** -- 方法論ナレッジはフレームワーク同梱の `knowledge/` に出荷されます（共有原則 + エージェント別方法論）。ユーザー管理のチームナレッジは、スペースレベルの `aidlc/knowledge/`（そのスペースの `intents/` の兄弟）に置かれ、エンジンが空で作成し、チームが中身を入れます。これにより、フレームワークのアップグレードとチームのカスタマイズが分離されます。
+6. **2 層ナレッジアーキテクチャ** -- 方法論ナレッジはフレームワーク同梱の `knowledge/` に出荷されます（共有原則 + エージェント別方法論）。ユーザー管理のチームナレッジは、スペースレベルの `aidlc/spaces/<space>/knowledge/`（そのスペースの `intents/` の兄弟）に置かれ、エンジンが空で作成し、チームが中身を入れます。これにより、フレームワークのアップグレードとチームのカスタマイズが分離されます。
 
 7. **フラットなエージェントファイル** -- 各エージェントは `agents/` 内の単一 `.md` ファイルです（`agent.md` + `knowledge/` を持つサブディレクトリではありません）。これにより構造が単純になり、エージェントが見つけやすくなります。方法論ナレッジは `knowledge/[agent]/` に分離して置かれます。
 
-8. **スコープ駆動の適応深度** -- 11 個の命名済みスコープ（エンタープライズ、機能、MVP、概念実証、バグ修正、リファクタリング、インフラ、セキュリティパッチ、クラシック、ワークショップ、エクスプレス）と自動検出が、どのステージをどの深さで実行するかを決めます。各スコープは `.claude/scopes/aidlc-<name>.md` ファイル（アイデンティティ）であり、所属は各ステージのメタデータ `scopes:` タグです。これはコンパイル時に EXECUTE/SKIP グリッド（`.claude/tools/data/scope-grid.json`、正本）へ転置され、`SKILL.md` 内のサマリーテーブルにもコンパイルされます（参考用）。自然言語のキーワードからスコープへの推論は、各スコープ `.md` メタデータの `keywords` を読みます。ユーザーはどの承認ゲートでも上書きできます。
+8. **スコープ駆動の適応深度** -- 11 個の命名済みスコープ（エンタープライズ、機能、MVP、概念実証、バグ修正、リファクタリング、インフラ、セキュリティパッチ、クラシック、ワークショップ、エクスプレス）と、エージェントが自由記述の言葉から提案する計画が、どのステージをどの深さで実行するかを決めます。各スコープは `.claude/scopes/aidlc-<name>.md` ファイル（アイデンティティ）であり、所属は各ステージのメタデータ `scopes:` タグです。これはコンパイル時に EXECUTE/SKIP グリッド（`.claude/tools/data/scope-grid.json`、正本）へ転置され、オーケストレータースキルの隣にある `tables.md` 内のサマリーテーブルにもコンパイルされます（参考用）。計画提案のステップは、各スコープ `.md` メタデータの `keywords` をヒントとしてエージェントに渡します。それらを照合するツールはありません。ユーザーはどの承認ゲートでも上書きできます。
 
-9. **最小限のルール** -- ガードレールだけ（合計およそ 35 行）がアクティブなスペースメモリ層（`aidlc/spaces/<active-space>/memory/`。`.claude/rules/aidlc.md` の `@` による取り込み用スタブ経由で読み込まれる）に置かれます。それ以外（検証、ブラウンフィールド保護策、監査フォーマット、適応パターン）は `knowledge/aidlc-shared/` か、静的／条件付きのプロトコルファイルに置きます。ルールは常に読み込まれるため、これにより AI-DLC 以外の会話でコンテキスト膨張を防げます。
+9. **ルールは方法論にとどめ、リファレンスにしない** -- アクティブなスペースメモリ層（`aidlc/spaces/<active-space>/memory/`。`.claude/rules/aidlc.md` の `@` による取り込み用スタブ経由で読み込まれる）は、フレームワークの作業上の既定値とガードレールを保持します。それ以外（検証、ブラウンフィールド保護策、監査フォーマット、適応パターン）は `knowledge/aidlc-shared/` か、静的／条件付きのプロトコルファイルに置きます。ルールは常に読み込まれるため、これにより AI-DLC 以外の会話でコンテキスト膨張を防げます。
 
-10. **自己学習ループ** -- 人間がエージェントの振る舞いを修正すると、その修正は永続的なルールになり得ます。§13 の学習儀式（ツールが主体。`aidlc-learnings.ts` が候補を提示して永続化し、ユーザーが確認する）は、確認済み学習を各プラクティスとしてアクティブなスペースメモリ層へ書き込みます。既定では `aidlc/spaces/<active-space>/memory/project.md`、ワンクリックで `memory/team.md` へ昇格もできます。あるいはセンサーをスキャフォールドし、次のワークフローのコンパイルで適用されます。詳細は [ルールシステム](08-rule-system.md) を参照してください。
+10. **自己学習ループ** -- 人間がエージェントの振る舞いを修正すると、その修正は永続的なルールになり得ます。§13 の学習儀式（ツールが主体。`aidlc-learnings.ts` が候補を提示して永続化し、ユーザーが確認する）は、確認済み学習を各プラクティスとしてアクティブなスペースメモリ層へ書き込みます。既定では `aidlc/spaces/<active-space>/memory/project.md`、ワンクリックで `memory/team.md` へ昇格もできます。これは進行中のワークフローの次のステージの配信から適用されます。あるいはセンサーをスキャフォールドし、それは次のステージグラフのコンパイルでバインドされます。詳細は [ルールシステム](08-rule-system.md) を参照してください。
 
-11. **フェーズ境界検証** -- トレーサビリティチェックはフェーズ遷移時に自動実行されます（初期化→アイデエーションの自動進行、アイデエーション→インセプション、インセプション→コンストラクション、コンストラクション→オペレーション）。これにより、要件から設計へのリンク欠落、孤立した成果物、不整合を、下流ステージが不完全な基盤の上に積み上がる前に捕捉します。
+11. **フェーズ境界検証** -- トレーサビリティチェックは、アイデエーション、インセプション、コンストラクションの終わりに実行され（初期化→アイデエーションの遷移にはありません）、そのフェーズの最後のステージが `<record>/verification/` に書き込みます。これにより、要件から設計へのリンク欠落、孤立した成果物、不整合を、下流ステージが不完全な基盤の上に積み上がる前に捕捉します。
 
-12. **フックベースの監査ロギング** -- 書き込み・編集操作に対するツール使用後フックが、成果物の作成と変更をインテントの `audit/` 分割記録へ自動記録します。圧縮前フックはコンテキスト圧縮前に状態ファイル構造を検証します。サブエージェント停止フックはサブエージェント完了を記録します。115イベントの分類体系（`knowledge/aidlc-shared/audit-format.md` で定義。[状態機械](12-state-machine.md) にイベント発生元レジストリの説明あり）により事後分析が可能です。主要イベントには `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, `RULE_LEARNED` があります。
+12. **フックベースの監査ロギング** -- 書き込み・編集操作に対するツール使用後フックが、成果物の作成と変更をインテントの `audit/` 分割記録へ自動記録します。圧縮前フックはコンテキスト圧縮前に状態ファイル構造を検証します。サブエージェント停止フックはサブエージェント完了を記録します。120イベントの分類体系（`knowledge/aidlc-shared/audit-format.md` で定義。[状態機械](12-state-machine.md) にイベント発生元レジストリの説明あり）により事後分析が可能です。主要イベントには `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, `RULE_LEARNED` があります。
 
 13. **ネストした委譲なし** -- コンダクター（`SKILL.md`）がすべてのエージェントタスク呼び出しを行います。エージェント同士が互いを呼び出したり、サブエージェントを起動したりはしません。これにより、委譲グラフがフラットでデバッグしやすく保たれます。
 
@@ -664,7 +705,7 @@ tests/
 +-- hooks/
 |   +-- pre-commit            # Git hook: runs the default levels (smoke + unit + integration)
 +-- smoke/                    # Level: structural validation (no LLM, seconds)
-+-- unit/                     # Level: single-component isolation (no LLM)
++-- unit/                     # Unit, process, and workflow contracts (no LLM)
 +-- integration/              # Level: cross-component contracts + live stage/CLI utilities
 +-- e2e/                      # Level: full lifecycle, worktree, rendered terminal journeys
 ```
@@ -688,7 +729,7 @@ Windows で同一に動きます。テストはファイル存在確認からレ
 | レベル | ディレクトリ | 対象 |
 |-------|-----------|----------------|
 | **スモーク** (L1) | `tests/smoke/` | ファイル存在、エージェント / ステージ / プロトコル構造、`SKILL.md` グラフ整合性、`settings.json` スキーマ。欠落ファイルや誤命名ファイルを捕捉する高速な構造チェックです。LLM は使いません。 |
-| **ユニット** (L1) | `tests/unit/` | 16 個のフック、CLI ツール、ステージ / エージェントのメタデータ、ナレッジインベントリ、オーケストレーションエンジンハンドラー、そのほか単一コンポーネント契約。各テストは 1 コンポーネントを隔離します。LLM は使いません。 |
+| **ユニット** (L1) | `tests/unit/` | フック、CLI ツール、ステージ / エージェントのメタデータ、ナレッジインベントリ、オーケストレーションエンジンの契約。この実行ティアには現在、ユニット、プロセス／アダプター、決定論的なワークフローのテストが含まれます。このディレクトリは、単一コンポーネントの隔離や低コストを意味しません。LLM は使いません。 |
 | **統合** (L2) | `tests/integration/` | コンポーネント横断契約（スコープからステージへの対応、ステージとエージェントのクロスチェック、プロトコル準拠、監査 / ランタイムグラフのエンドツーエンド）と、`claude` CLI または SDK を通して駆動される実行中のステージ / CLI ユーティリティ。`claude` がなければ実行中のファイルはきれいにスキップされます。 |
 | **E2E** (L3) | `tests/e2e/` | フルライフサイクルとワークツリープリミティブ、さらに実際のユーザー質問ゲートへ答えるとディスク状態が進むことを証明するレンダリング済みターミナル（`tui-drive.ts`）の一連の操作。実行中の一連の操作には `claude` + Bedrock 認証情報が必要で、`AIDLC_TUI_LIVE=1` の後ろにゲートされています。 |
 

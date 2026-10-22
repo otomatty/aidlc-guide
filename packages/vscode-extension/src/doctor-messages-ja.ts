@@ -183,6 +183,19 @@ const labels: Readonly<Record<string, string>> = {
     "プロジェクトは Git リポジトリ内にあります（リポジトリ外では Cursor がプロジェクトのフックを実行しない場合があります）",
   "Claude hook wiring differs from its legacy shipped baseline; refresh is required before flow-altering hooks can be verified":
     "Claude のフック登録が以前の出荷時の内容と異なります。進行に影響するフックを確認するには、更新が必要です",
+  // 2.11.1
+  "agents/aidlc.json or agents/aidlc-aidlc.md present (conductor wiring)":
+    "agents/aidlc.json または agents/aidlc-aidlc.md の存在確認: 進行役の設定",
+  "Stale branches: 0 observed (git is not installed)":
+    "古いブランチ: 検出されていません。git がインストールされていません",
+  "Kiro Workflows is off": "Kiro Workflows: オフです",
+  "Kiro Workflows is on, so AI-DLC's reviews and helpers do not run in your Kiro IDE chats":
+    "Kiro Workflows がオンのため、Kiro IDE のチャットでは AI-DLC のレビューと補助エージェントが動きません",
+  "Kiro Workflows: Kiro's settings file has an error, so AI-DLC cannot tell whether Workflows is on":
+    "Kiro Workflows: Kiro の設定ファイルに誤りがあるため、Workflows がオンかどうかを AI-DLC が判断できません",
+  "Kiro terminal: Kiro runs its agent's commands in Command Prompt, where most AI-DLC steps come back with no reply and your words can get split":
+    "Kiro のターミナル: Kiro はエージェントのコマンドをコマンド プロンプトで実行します。コマンド プロンプトでは AI-DLC のほとんどの手順が応答を返さず、入力した言葉が分割されることがあります",
+  "Kiro terminal: PowerShell (Kiro's default)": "Kiro のターミナル: PowerShell（Kiro の既定）",
 };
 
 const fixes: Readonly<Record<string, string>> = {
@@ -295,6 +308,77 @@ const fixes: Readonly<Record<string, string>> = {
 };
 
 const labelPatterns: readonly TranslationPattern[] = [
+  // 2.11.1
+  [
+    /^Update: not checked yet \(run `([^`]+)` to check\)$/,
+    "更新確認: まだ確認していません（`$1` で確認できます）",
+  ],
+  [
+    /^active space method copy current \(aidlc\/active-memory\/ holds aidlc\/spaces\/([\w.-]+)\/memory\/\)$/,
+    "使用中スペースの手順のコピーは最新です（aidlc/active-memory/ に aidlc/spaces/$1/memory/ を保持）",
+  ],
+  [
+    /^active space method copy is behind aidlc\/spaces\/([\w.-]+)\/memory\/ \((.+)\); your chats read that copy$/,
+    "使用中スペースの手順のコピーが aidlc/spaces/$1/memory/ より古くなっています（$2）。チャットはこのコピーを読みます",
+  ],
+  [
+    /^Plugin marketplace: not created yet; run `([^`]+)` to create it at (.+)$/,
+    "プラグインのマーケットプレイス: まだ作成されていません。`$1` を実行すると $2 に作成されます",
+  ],
+  [
+    /^Plugin marketplace: (.+) holds files AI-DLC did not write, so updates do not refresh it: (.+)$/,
+    "プラグインのマーケットプレイス: $1 に AI-DLC が書き込んでいないファイルがあるため、更新しても最新になりません: $2",
+  ],
+  [
+    /^Plugin marketplace: (.+) lists the plugins of AI-DLC an earlier release, not (\S+)$/,
+    "プラグインのマーケットプレイス: $1 には以前のリリースの AI-DLC のプラグインが載っています（使用中は $2）",
+  ],
+  [
+    /^Plugin marketplace: (.+) lists the plugins of AI-DLC (\S+), not (\S+)$/,
+    "プラグインのマーケットプレイス: $1 には AI-DLC $2 のプラグインが載っています（使用中は $3）",
+  ],
+  [/^Plugin marketplace: ([^;]+)$/, "プラグインのマーケットプレイス: $1"],
+  [
+    /^Plugins: (.+) in this project \(no host plugin list to compare versions with\)$/,
+    "プラグイン: このプロジェクトには $1 があります（バージョンを比べる実行環境側のプラグイン一覧はありません）",
+  ],
+  [
+    /^AI-DLC files: unchanged since AI-DLC wrote them, apart from (\d+) agent files? Kiro upgraded for its 3\.0 engine$/,
+    "AI-DLC のファイル: AI-DLC が書き込んだときから変更されていません（Kiro が 3.0 エンジン用に更新した $1 件のエージェントファイルを除く）",
+  ],
+  [
+    /^Your replies are not being recorded: (\d+) (?:step or approval|steps or approvals) so far and no message of yours on record$/,
+    "返答が記録されていません: これまでに $1 件の手順・承認がありますが、あなたのメッセージの記録がありません",
+  ],
+  [
+    /^Request folder: check skipped \(advisory\) - (.+)$/,
+    "依頼フォルダー: 確認を省略しました（参考）- $1",
+  ],
+  [
+    /^Workspace records: (\d+) uncommitted change\(s\) under aidlc\/ \(advisory - the shared records travel by git; commit & push so teammates get them: `git add aidlc\/ && git commit && git push`\)$/,
+    "ワークスペースの記録: aidlc/ 以下に未コミットの変更が $1 件あります（参考。共有の記録は git で届きます。チームに届くよう commit と push をしてください: `git add aidlc/ && git commit && git push`）",
+  ],
+  [
+    /^Workspace records: (\d+) uncommitted change\(s\) under aidlc\/ \(advisory - the shared records travel by git; commit & push them so teammates get them once the request folder steps below are done\)$/,
+    "ワークスペースの記録: aidlc/ 以下に未コミットの変更が $1 件あります（参考。共有の記録は git で届きます。下の依頼フォルダーの手順を終えたら、チームに届くよう commit と push をしてください）",
+  ],
+  [
+    /^Kiro terminal: (.+) could not be read as JSONC$/,
+    "Kiro のターミナル: $1 を JSONC として読み込めません",
+  ],
+  [/^Kiro terminal: ([^,;]+)$/, "Kiro のターミナル: $1"],
+  [
+    /^Session model: (\S+) runs at ([\w-]+) effort, which \1 does not offer$/,
+    "セッションのモデル: $1 は effort $2 で動作していますが、$1 はこの effort を提供していません",
+  ],
+  [
+    /^Session model: (\S+) at ([\w-]+) effort, from your personal Kiro settings; the ([\w-]+) preset asks for ([\w-]+) \(`([^`]+)` applies it\)$/,
+    "セッションのモデル: $1、effort は $2（Kiro の個人設定）。$3 プリセットは $4 を求めます（`$5` で適用できます）",
+  ],
+  [
+    /^Session model: (\S+) runs at Kiro's own effort; the ([\w-]+) preset asks for ([\w-]+)$/,
+    "セッションのモデル: $1 は Kiro 自身の effort で動作しています。$2 プリセットは $3 を求めます",
+  ],
   // 2.11.0 (ahead of older, looser patterns for the same rows)
   [/^Hooks last fired: (.+)$/, "フックの最終実行: $1"],
   [
@@ -368,7 +452,7 @@ const labelPatterns: readonly TranslationPattern[] = [
     "セッションのモデル: $1（effort の設定なし、Kiro の個人設定）",
   ],
   [
-    /^Session model: (\S+) at (\w+) effort \(([\w-]+)\), from your personal Kiro settings$/,
+    /^Session model: (\S+) at ([\w-]+) effort \(([\w-]+)\), from your personal Kiro settings$/,
     "セッションのモデル: $1、effort は $2（$3）、Kiro の個人設定",
   ],
   [
@@ -868,6 +952,67 @@ const labelPatterns: readonly TranslationPattern[] = [
 ];
 
 const fixPatterns: readonly TranslationPattern[] = [
+  // 2.11.1
+  [/^run `([^`]+ engine plugin sync)`$/, "`$1` を実行してください"],
+  [/^run `([^`]+ --session-model \S+)`$/, "`$1` を実行してください"],
+  [
+    /^run `([^`]+)`, or choose one in Kiro with \/model, then \/model set-current-as-default to save it$/,
+    "`$1` を実行するか、Kiro の /model でモデルを選び、/model set-current-as-default で保存してください",
+  ],
+  [
+    /^run `([^`]+)`, or choose an effort in Kiro with \/effort$/,
+    "`$1` を実行するか、Kiro の /effort で effort を選んでください",
+  ],
+  [
+    /^correct the file, or in Kiro run Terminal: Select Default Profile from the Command Palette and choose PowerShell$/,
+    "ファイルを修正するか、Kiro のコマンドパレットで Terminal: Select Default Profile を実行して PowerShell を選んでください",
+  ],
+  [
+    /^ask the agent to set Kiro's terminal to PowerShell, or run `([^`]+)` \(a Kiro setting for all your projects\); then restart Kiro$/,
+    "Kiro のターミナルを PowerShell にするようエージェントに頼むか、`$1` を実行してください（すべてのプロジェクトに効く Kiro の設定です）。その後、Kiro を再起動してください",
+  ],
+  [
+    /^ask the agent to turn Kiro Workflows off, or run `([^`]+)` \(a Kiro setting for all your projects\); then run Developer: Reload Window from the Command Palette$/,
+    "Kiro Workflows をオフにするようエージェントに頼むか、`$1` を実行してください（すべてのプロジェクトに効く Kiro の設定です）。その後、コマンドパレットから Developer: Reload Window を実行してください",
+  ],
+  [/^fix the error in (.+)$/, "$1 の誤りを修正してください"],
+  [
+    /^turn ([\w.-]+) back on under Kiro's Agent Hooks, or set "enabled": true in (.+)$/,
+    'Kiro の Agent Hooks で $1 をオンに戻すか、$2 で "enabled": true にしてください',
+  ],
+  [
+    /^turn them back on under Kiro's Agent Hooks, or set "enabled": true in their (.+)\/hooks\/ files$/,
+    'Kiro の Agent Hooks でオンに戻すか、$1/hooks/ の各ファイルで "enabled": true にしてください',
+  ],
+  [/^move them out, then run `([^`]+)`$/, "それらを移動してから `$1` を実行してください"],
+  [
+    /^close Claude Code and Codex, then run `([^`]+)`$/,
+    "Claude Code と Codex を閉じてから `$1` を実行してください",
+  ],
+  [
+    /^run `([^`]+)`; it names anything that stops the refresh$/,
+    "`$1` を実行してください。更新を止めているものがあれば表示されます",
+  ],
+  [
+    /^make aidlc\/active-memory\/ writable in the project root \(it is AI-DLC's git-ignored copy; remove what is there if it is not a plain folder of files\), then run \/aidlc or `([^`]+)`$/,
+    "プロジェクトのルートで aidlc/active-memory/ を書き込み可能にしてください（AI-DLC が git の対象外で保持するコピーです。通常のファイルのフォルダーでなければ、中身を削除してください）。その後、/aidlc か `$1` を実行してください",
+  ],
+  [
+    /^do the request folder steps below first; then this row names the commit$/,
+    "先に下の依頼フォルダーの手順を行ってください。その後、この行にコミットの方法が表示されます",
+  ],
+  [
+    /^Plan approval is off for this piece of work, so the plan is built as written, without a check of the project's files\. Repair the source boundary: add the offending path to the exclude list in \.aidlc-source-paths\.json, declare real source under an excluded directory in its paths list, or remove the broken symlink; then run next\.$/,
+    "この作業では計画承認がオフのため、計画はプロジェクトのファイルを確認せずにそのまま作られます。ソースの範囲を直してください: 問題のパスを .aidlc-source-paths.json の除外リストに加えるか、除外したディレクトリ内の実際のソースを paths に宣言するか、壊れたシンボリックリンクを削除してから、next を実行します。",
+  ],
+  [
+    /^The plan question is asked as usual, and the build starts without a check of the project's files\. Repair the source boundary: add the offending path to the exclude list in \.aidlc-source-paths\.json, declare real source under an excluded directory in its paths list, or remove the broken symlink; then run next\.$/,
+    "計画の確認はいつもどおり行われ、プロジェクトのファイルを確認せずにビルドが始まります。ソースの範囲を直してください: 問題のパスを .aidlc-source-paths.json の除外リストに加えるか、除外したディレクトリ内の実際のソースを paths に宣言するか、壊れたシンボリックリンクを削除してから、next を実行します。",
+  ],
+  [
+    /^Plan Approval decisions are refused while the source cannot be bound\. Repair the source boundary: add the offending path to the exclude list in \.aidlc-source-paths\.json, declare real source under an excluded directory in its paths list, or remove the broken symlink; then run next\. Last resort, only on your own word: ask the assistant in chat to build the plan anyway, and it is recorded as your approval with no check of the project's files\.$/,
+    "ソースを結び付けられない間は、計画承認の判断は拒否されます。ソースの範囲を直してください: 問題のパスを .aidlc-source-paths.json の除外リストに加えるか、除外したディレクトリ内の実際のソースを paths に宣言するか、壊れたシンボリックリンクを削除してから、next を実行します。最後の手段として、あなた自身の言葉でのみ: チャットでアシスタントに「それでも計画どおり作って」と頼むと、プロジェクトのファイルを確認しない承認として記録されます。",
+  ],
   // 2.11.0
   [
     /^This is expected before your first opencode chat in this folder\. If you already started one, quit opencode and start it again with just `opencode` in (.+), then run doctor again\.$/,
@@ -1104,13 +1249,132 @@ const filePurposes: Readonly<Record<string, string>> = {
     "運用フェーズのルール。エージェントの判断で読み込みます",
 };
 
+/** What stops working when an AI-DLC hook is switched off in Kiro's Agent Hooks (2.11.1). */
+const kiroHookEffects: Readonly<Record<string, string>> = {
+  "the approved plan, reviewed work and AI-DLC's records are not protected":
+    "承認した計画、レビュー済みの作業、AI-DLC の記録が保護されません",
+  "your replies are not recorded, so approval gates cannot tell your answer from the assistant's, and /aidlc commands typed in chat are not run directly":
+    "返答が記録されないため、承認ゲートがあなたの回答とアシスタントの回答を区別できず、チャットで入力した /aidlc コマンドも直接実行されません",
+  "a workflow with work left is not kept moving when the assistant stops (on Kiro CLI v3; Kiro IDE only records it)":
+    "作業が残っているワークフローが、アシスタントが止まったときに先へ進められません（Kiro CLI v3 の場合。Kiro IDE は記録だけします）",
+  "the build is not kept to the plan you approved": "ビルドが承認した計画どおりに保たれません",
+  "commands are not checked before they run": "コマンドが実行前に確認されません",
+  "workflow state can change without the engine":
+    "エンジンを通さずにワークフローの状態が変わる可能性があります",
+  "reviewed work is not protected": "レビュー済みの作業が保護されません",
+  "your first prompt starts the session instead":
+    "代わりに最初のプロンプトでセッションが始まります",
+  "a specialist agent's finished part is not recorded":
+    "専門エージェントが終えた部分が記録されません",
+  "/aidlc utility commands typed in chat go to the assistant instead of running directly":
+    "チャットで入力した /aidlc のユーティリティコマンドが直接実行されず、アシスタントに渡ります",
+  "files you create or update are not recorded or checked":
+    "作成・更新したファイルが記録も確認もされません",
+  "the Current Stage in aidlc-state.md can fall behind":
+    "aidlc-state.md の Current Stage が実際より遅れることがあります",
+  "the plan of remaining stages is not rebuilt after the workflow moves":
+    "ワークフローが進んでも、残りのステージの計画が作り直されません",
+  "the current stage and the plan of remaining stages are not kept in step after a terminal command":
+    "ターミナルのコマンドのあと、現在のステージと残りのステージの計画がそろいません",
+  "it no longer runs": "実行されなくなります",
+};
+
+/** Parts of the request-folder row and its steps (2.11.1). */
+const requestFolderHeld: readonly TranslationPattern[] = [
+  [/^(\d+) that git tracks$/, "git が追跡しているもの $1 件"],
+  [/^(\d+) not ignored$/, "無視されていないもの $1 件"],
+  [/^(\d+) taken out of git, not committed yet$/, "git から外したが未コミットのもの $1 件"],
+];
+const requestFolderSteps: Readonly<Record<string, string>> = {
+  "add the line `aidlc/.aidlc-request-text/` to the project folder's .gitignore, and check no later rule of yours un-ignores it":
+    "プロジェクトフォルダーの .gitignore に `aidlc/.aidlc-request-text/` の行を追加し、それより後の独自のルールで無視が解除されていないことを確認してください",
+  "in the project folder, take the tracked ones out of git, keeping the files: `git rm --cached -r -f -- aidlc/.aidlc-request-text/`":
+    "プロジェクトフォルダーで、追跡されているものをファイルは残したまま git から外してください: `git rm --cached -r -f -- aidlc/.aidlc-request-text/`",
+  "commit and push the removal, with .gitignore if its change is not committed yet":
+    "削除を commit して push してください。.gitignore の変更が未コミットなら一緒に含めます",
+  "commit and push the removal and the .gitignore change":
+    "削除と .gitignore の変更を commit して push してください",
+  "commit and push the .gitignore change": ".gitignore の変更を commit して push してください",
+};
+
+const openCodeAsk: Readonly<Record<string, string>> = {
+  "shell command": "シェルコマンド",
+  "file edit": "ファイル編集",
+};
+
+function translateOpenCodeNote(value: string): string | null {
+  const one =
+    /^Your opencode setting (asks before|refuses) every (shell command|file edit); in this project AI-DLC's permission rules replace that short form\. To keep (?:asking|refusing), write it as (.+) in (.+)\.$/.exec(
+      value,
+    );
+  if (one?.[2]) {
+    const verb = one[1] === "asks before" ? "毎回確認する" : "毎回拒否する";
+    return `opencode の設定は${openCodeAsk[one[2]]}を${verb}ようになっていますが、このプロジェクトでは AI-DLC の権限ルールがこの省略形を置き換えます。この動作を保つには、${one[4]} に ${one[3]} と書いてください。`;
+  }
+  const many =
+    /^Your opencode settings (.+); in this project AI-DLC's permission rules replace those short forms\. To keep them, write them as (.+) in (.+)\.$/.exec(
+      value,
+    );
+  if (!many?.[1]) return null;
+  const parts: string[] = [];
+  for (const part of many[1].split(" and ")) {
+    const m = /^(ask before|refuse) every (shell command|file edit)$/.exec(part);
+    if (!m?.[2]) return null;
+    parts.push(`${openCodeAsk[m[2]]}を${m[1] === "ask before" ? "毎回確認" : "毎回拒否"}`);
+  }
+  return `opencode の設定は${parts.join("、")}するようになっていますが、このプロジェクトでは AI-DLC の権限ルールがこれらの省略形を置き換えます。この動作を保つには、${many[3]} に ${many[2]} と書いてください。`;
+}
+
 function translateOne(value: string, kind: MessageKind): string | null {
   const exact = (kind === "label" ? labels : fixes)[value];
   if (typeof exact === "string") return exact;
   for (const [pattern, translated] of kind === "label" ? labelPatterns : fixPatterns) {
     if (pattern.test(value)) return value.replace(pattern, translated);
   }
+  if (kind === "fix" && value.includes(", then ")) {
+    const steps = value.split(", then ").map((step) => requestFolderSteps[step]);
+    if (steps.every((step) => step !== undefined)) return steps.join("。その後、");
+  }
   if (kind === "label") {
+    const note = translateOpenCodeNote(value);
+    if (note !== null) return note;
+    const hook = /^AI-DLC hook ([\w.-]+) is switched off in Kiro's Agent Hooks: (.+)$/.exec(value);
+    if (hook?.[2] && Object.hasOwn(kiroHookEffects, hook[2]))
+      return `AI-DLC のフック ${hook[1]} が Kiro の Agent Hooks でオフになっています: ${kiroHookEffects[hook[2]]}`;
+    const hooks = /^AI-DLC hooks switched off in Kiro's Agent Hooks: (.+)$/.exec(value);
+    if (hooks?.[1]) {
+      const parts: string[] = [];
+      for (const part of hooks[1].split("; ")) {
+        const m = /^([\w.-]+) \((.+)\)$/.exec(part);
+        if (!m?.[2] || !Object.hasOwn(kiroHookEffects, m[2])) return null;
+        parts.push(`${m[1]}（${kiroHookEffects[m[2]]}）`);
+      }
+      return `Kiro の Agent Hooks でオフになっている AI-DLC のフック: ${parts.join("、")}`;
+    }
+    const request =
+      /^Request folder: files in aidlc\/\.aidlc-request-text\/ hold your own requests \((.+)\)$/.exec(
+        value,
+      );
+    if (request?.[1]) {
+      const parts: string[] = [];
+      for (const part of request[1].split(", ")) {
+        const known = requestFolderHeld.find(([pattern]) => pattern.test(part));
+        if (!known) return null;
+        parts.push(part.replace(known[0], known[1]));
+      }
+      return `依頼フォルダー: aidlc/.aidlc-request-text/ のファイルにはあなた自身の依頼が入っています（${parts.join("、")}）`;
+    }
+    // A paused plugin is the person's own choice and rides on the plugin row (2.11.1).
+    const paused = [...value.matchAll(/; ([\w.-]+) paused: needs ([\w.@^~<>=-]+), which is off/g)];
+    if (value.startsWith("Plugins: ") && paused.length > 0) {
+      const rest = translateOne(
+        value.replace(/; ([\w.-]+) paused: needs ([\w.@^~<>=-]+), which is off/g, ""),
+        kind,
+      );
+      if (rest === null) return null;
+      const notes = paused.map((m) => `${m[1]} は一時停止中です（必要な ${m[2]} がオフ）`);
+      return `${rest}。${notes.join("。")}`;
+    }
     const failedName = /^(.*): check failed$/.exec(value)?.[1];
     if (failedName && Object.hasOwn(checkNames, failedName))
       return `${checkNames[failedName]}: 検査に失敗しました`;
@@ -1125,7 +1389,7 @@ function translateOne(value: string, kind: MessageKind): string | null {
     }
     // Verbose plugin details contain identifiers and status tokens, not prose.
     const plugin =
-      /^(Plugins: (?:\d+ need attention|\d+ require sync|composed state is current)) - ([\w.-]+:[\w-]+(?:, [\w.-]+:[\w-]+)*)$/.exec(
+      /^(Plugins: (?:\d+ need attention|\d+ require sync|composed state is current|.+ in this project \(no host plugin list to compare versions with\))) - ([\w.-]+:[\w-]+(?:, [\w.-]+:[\w-]+)*)$/.exec(
         value,
       );
     if (plugin?.[1]) {

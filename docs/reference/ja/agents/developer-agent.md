@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-developer-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | セッションのツールセット全体を継承します（MCP ツールを含む。`tools:` 許可リストなし）。使用を想定するのは Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion です |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -57,18 +57,18 @@
 
 | ファイル | 内容 |
 |----------|------|
-| api-design-guide.md | API コントラクト設計（REST、GraphQL、gRPC）の手法 |
+| api-design-guide.md | API コントラクト設計の手法（REST/HTTP の規約、OpenAPI、AsyncAPI） |
 | code-analysis-guide.md | コードベース分析とリバースエンジニアリング技法 |
 | code-generation-guide.md | コード生成の手法と実装パターン |
-| code-generation-patterns.md | 言語別のコード生成パターンとテンプレート |
+| code-generation-patterns.md | どの言語にも当てはまるコード生成の原則（クリーンコード、SOLID、エラー、ロギング、構成） |
 | data-modelling-patterns.md | データモデル設計パターン（リレーショナルおよび NoSQL） |
 | re-artifacts.md | リバースエンジニアリング成果物の仕様 |
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-developer-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-developer-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。コーディング標準、フレームワーク規約、既存の
+チームが内容を持つときに作成するスペースレベルのディレクトリです（スペースの `knowledge/` フォルダはエンジンが空で作成します）。コーディング標準、フレームワーク規約、既存の
 API パターン、マイグレーション戦略など、プロジェクト固有の
 開発文脈をチームがここに格納します。
 

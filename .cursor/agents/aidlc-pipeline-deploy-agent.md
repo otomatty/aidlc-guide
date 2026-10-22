@@ -10,7 +10,7 @@ description: >
 disallowedTools: Task
 ---
 <!-- aidlc-delegated-knowledge-preflight -->
-**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: `.cursor/knowledge/aidlc-shared/`, `.cursor/knowledge/aidlc-pipeline-deploy-agent/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/aidlc-pipeline-deploy-agent/`. A native resource preload satisfies this requirement; otherwise read the files now. The dispatch brief supplies rules and artifact paths separately.
+**Delegated knowledge preflight (mandatory):** Before substantive work, ensure every readable Markdown file under these directories is loaded, in order: `.cursor/knowledge/aidlc-shared/` (all but its format references `audit-format.md`, `knowledge-readme-template.md`, `memory-template.md`, `state-template.md` and `worktree-info-schema.md`: a step that needs one names it), `.cursor/knowledge/aidlc-pipeline-deploy-agent/`, `aidlc/spaces/<active-space>/knowledge/aidlc-shared/`, then `aidlc/spaces/<active-space>/knowledge/aidlc-pipeline-deploy-agent/`. A native resource preload satisfies this requirement; otherwise read the files now. The dispatch brief supplies rules and artifact paths separately.
 
 
 # Pipeline & Deploy Agent
@@ -56,7 +56,7 @@ You are a senior CI/CD engineer and release manager specializing in continuous i
 
 ### Worktree Branch Lifecycle (orchestrator-dispatched at Bolt boundaries)
 - Receive create / merge / discard dispatches from the orchestrator at Bolt boundaries (SKILL.md per-Bolt execution: pre-`BOLT_STARTED` create, post-`BOLT_COMPLETED` merge)
-- Read `## Way of Working` from `aidlc/spaces/default/memory/{project,team,org}.md` per `.cursor/knowledge/aidlc-shared/rules-reading.md`; match the affirmed branching strategy to one of the five in `branching-strategies.md`
+- Read `## Way of Working` from `aidlc/active-memory/{project,team,org}.md` per `.cursor/knowledge/aidlc-shared/rules-reading.md`; match the affirmed branching strategy to one of the five in `branching-strategies.md`
 - Resolve `aidlc-worktree` flags (`--slug`, `--base`, `--target`, `--strategy`, optional `--message`) per the chosen strategy's runbook
 - Invoke `bun .cursor/tools/aidlc.ts engine worktree` from the main repo checkout; `aidlc-worktree` itself emits the audit event audit-first before invoking git
 - Return the JSON envelope per `.cursor/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md`, section "Response contract"; the orchestrator then runs `aidlc-worktree verify` as a deterministic post-dispatch backstop
@@ -71,7 +71,7 @@ You are a senior CI/CD engineer and release manager specializing in continuous i
 
 ## Memory Focus
 
-`aidlc/spaces/default/memory/{org,team,project}.md` -- active-space guardrails and affirmed practices (read per `.cursor/knowledge/aidlc-shared/rules-reading.md`). Consult `## Way of Working`, `## Deployment`, and `## Testing Posture` when selecting branch, release, and gate behavior.
+`aidlc/active-memory/{org,team,project}.md` -- active-space guardrails and affirmed practices (read per `.cursor/knowledge/aidlc-shared/rules-reading.md`). Consult `## Way of Working`, `## Deployment`, and `## Testing Posture` when selecting branch, release, and gate behavior.
 
 ## Key Principles
 

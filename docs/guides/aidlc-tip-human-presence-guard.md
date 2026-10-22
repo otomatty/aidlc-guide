@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.11.0・Claude Code。内容確認: 2026年10月9日。
+対象: 2.11.0・2.11.1・Claude Code。内容確認: 2026年10月22日。
 
 `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` は、承認や回答が実際の人の発言に基づくことを検証するガードの一時回避です。hooksが発言の証跡を記録できない環境などで、人が付き添って復旧するための設定です。
 
@@ -60,9 +60,17 @@ Remove-Item Env:AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD
 
 要約確認用の変数を追加するのは、この管理ポリシー下での一時復旧です。人が承認・回答する手順は続けます。管理者がポリシーを解除し、hooksの承認を終えたら、両方の変数を解除してClaude Codeを完全に終了・再起動し、`/aidlc --doctor` で再確認します。
 
+## 2.11.1での追記
+
+**記録されていないことをdoctorが警告します。** ステップや承認が進んでいるのに人の発言が1件も記録されていない場合、2.11.1の `/aidlc --doctor` は `Your replies are not being recorded: ...` と警告し、使用中のツールのhooksの対処を示します。このままでは次の承認が拒否されます。一時回避の前に、まずこの警告とhooksを確認します。
+
+**この変数があるとCode Generationの拒否は残ります。** 2.11.1では、コードがworktree・クローン・サブモジュールなどにあってレビューから見えない場合、Guard Policyが `strict` か `relaxed` なら最初の報告を1回拒否し、次の報告で `AI-DLC found no source changes under <where it looked>` を添えた承認質問を人に出します。ただし、人の発言の確認を無効にしている間（この変数を設定した場合を含む）や、自律実行・無人実行では、この拒否がそのまま残ります。Guard Policyが `off` なら拒否されず、作業はそのまま続きます。
+
+人の発言の確認を無効にできるのは、この変数（起動環境か `aidlc config flags --bypass` による記録）だけで、Guard Policyや作業ごとの設定では無効にならない点は、2.11.1でも同じです。
+
 ## 根拠
 
-[2.11.0のガードと一時回避](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md)、[人が付き添う復旧](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)。
+[2.11.0のガードと一時回避](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md)、[人が付き添う復旧](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)、[2.11.1のガードと一時回避](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/13-customization.md#guard-policy)、[2.11.1のdoctorの確認項目](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/12-cli-commands.md)、[2.11.1のソース変更が見えない場合](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/reference/15-stage-definition.md)、[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)。
 
 ## 関連記事
 

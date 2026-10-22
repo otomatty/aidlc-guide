@@ -1,6 +1,6 @@
 # スコープ
 
-## Classic scope（2.11.0）
+## Classic scope（2.11.1）
 
 新規 Classic は 18 / 33 ステージで、Inception から Build and Test までを実行します。Ideation・CI Pipeline・Operation は除外し、既存の記録済みグラフは維持します。深度・テストは Standard、レビューは advisory 1 回、Sensors / Learnings / Plan Approval は on、Skeleton / Summary Confirmation / Collaborators は off、Guard Policy は off です。従来の 26 ステージは workshop で選べます。
 

@@ -2,7 +2,7 @@
 
 AI-DLC が実際にどう動くかを示す 2 つの完全な実例を載せます。1 つはバグ修正、もう 1 つは機能開発です。どちらもコマンド呼び出し、ステージ進行、承認ゲート、成果物出力を示します。
 
-> **ハーネスに関する注記。** これらの実行記録は **Claude Code** で取得しました。そのため `/aidlc` や、`Task` 呼び出しで委譲されるサブエージェントステージなど、Claude Code の操作面がそのまま出ています。ステージの流れ、ゲート、成果物はどのハーネスでも同一で、違うのは委譲の仕組みだけです（Kiro は `subagent` ツール、Codex は `codex exec` ワーカーを使います）。[他のハーネスでの実行](harnesses/README.md) を参照してください。
+> **ハーネスに関する注記。** これらの実行記録は **Claude Code** で取得しました。そのため `/aidlc` や、`Task` 呼び出しで委譲されるサブエージェントステージなど、Claude Code の操作面がそのまま出ています。ステージの流れ、ゲート、成果物はどのハーネスでも同一で、違うのは委譲の仕組みだけです（Kiro は `subagent` ツール、Codex は `spawn_agent` サブエージェントを使います）。[他のハーネスでの実行](harnesses/README.md) を参照してください。
 
 ---
 
@@ -46,7 +46,7 @@ AI-DLC が実際にどう動くかを示す 2 つの完全な実例を載せま�
 - **0.2 ワークスペース検出** — ルールベース走査が Java 17、Spring Boot 3.2、Maven、既存プロジェクトを特定する
 - **0.3 状態初期化** — `aidlc-state.md` を、スコープ `bugfix`、深さ `Minimal`、実行対象の分野別ステージを含む状態で初期化する
 
-> 進捗: 全体 3/9 | 初期化の 3/3 ステージが完了。次: リバースエンジニアリング
+> この作業用に bugfix ワークフローを準備しています: 6 ステージ、承認ゲート 6 個。
 
 ### ステージ 2.1 — リバースエンジニアリング
 
@@ -79,7 +79,7 @@ Reverse Engineering complete. How would you like to proceed?
 aidlc-product-agent のペルソナが読み込まれ、`<record>/inception/requirements-analysis/requirements-analysis-questions.md` に確認質問を作成します。
 
 ```markdown
-## Q1: Bug Severity Classification
+## Q1. [Product owner] Bug Severity Classification
 How severe is this bug for your users?
 A. Critical — causes data loss or security exposure
 B. High — blocks a core workflow for affected users
@@ -198,7 +198,7 @@ aidlc/spaces/default/
 
 3 つの初期化ステージは `aidlc-utility intent-create` 内で自動実行されます。ワークスペース検出は、TypeScript、Node.js 20、Express、PostgreSQL、既存のタスク / 利用者サービスを持つ既存プロジェクトを特定します。
 
-> 進捗: 全体 3/33 | スコープ: feature、深さ: Standard
+> この作業用に feature ワークフローを準備しています: 30 ステージ、承認ゲート 30 個。Construction では 5 ステージが作業単位ごとに繰り返されます。
 
 ### アイデア創出フェーズ（ステージ 1.1〜1.7）
 
@@ -212,7 +212,7 @@ aidlc-product-agent はまず許可されたソースの全体を `intent-captur
 - [desc] Initial description: "A notification service for our task management app..."
 - [scope] Workflow-selected scope: `feature`.
 
-## Q1. Which notification channels are in scope?
+## Q1. [Product owner] Which notification channels are in scope?
 A. In-app only
 B. In-app + email
 C. In-app + email + push
@@ -248,7 +248,7 @@ None.
 
 アイデア創出の全出力を集約した取り組み概要をまとめます。フェーズ境界検証により、インテントからスコープまでの追跡可能性を確認します。
 
-> 進捗: 全体 10/33 | アイデア創出フェーズ完了。検証ゲート通過。
+> 進捗: 30 ステージ中 7 ステージ完了。次: リバースエンジニアリング。
 
 ### インセプションフェーズ（ステージ 2.1〜2.9）
 
@@ -296,9 +296,9 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 
 計画のみです。Bolt 1 は `notification-core` を出荷する想定です（ワーキングスケルトンとして、イベントハンドラー処理がエンドツーエンドで通ることを証明します）。Bolt 2 では `notification-preferences` と `notification-email` を一緒に出荷する想定です。Bolt ごとの完了定義は `bolt-plan.md` に記録し、WSJF 風の根拠は `risk-and-sequencing-rationale.md`、外部 SES / SQS 依存は `external-dependency-map.md` に記録します。構築エンジンはこの計画を実行順として消費しません — 実行時のバッチは引き続き 2.7 の DAG から決まります。フェーズ境界検証により要件とアーキテクチャの整合を確認します。
 
-この例では、プロジェクトの検査は `bun run verify:notifications` です。イベントを送信し、保存とアプリ内配信を検証します。コンダクターは提案するコマンドをファイル書込みツールで`<record>/verification-command.txt` に書き込み、続いて検証コマンドの判断を開きます。`decision`ツールの JSON 出力から正規化された `command` 全体をそのまま質問のコードスパンへ写します。「Use this command to verify each completed Unit?`bun run verify:notifications`」。コマンドが省略されることはなく、人間は`<record>/verification-command.txt` を開いて確認することもできます。正規化されたコマンドは、空白でない 1 行で 1024 文字以内でなければなりません。制御文字と表示を偽る文字（ゼロ幅や双方向制御を含む Unicode の書式文字、行／段落区切り、ノーブレークスペース U+00A0）は拒否します。あなたが **Approve** を選びます。その正確な回答を同じセッションで記録した後でのみ、型付きの設定コマンドがこのコマンドをインテントのチェックポイント用に認可します。
+この例では、プロジェクトの検査は `bun run verify:notifications` です。イベントを送信し、保存とアプリ内配信を検証します。コンダクターは提案するコマンドをファイル書込みツールで`<record>/verification-command.txt` に書き込み、続いて検証コマンドの判断を開きます。`decision`ツールの JSON 出力から正規化された `command` 全体をそのまま質問のコードスパンへ写します。「Use this command to verify each completed Unit?`bun run verify:notifications`」。コマンドが省略されることはなく、人間は`<record>/verification-command.txt` を開いて確認することもできます。正規化されたコマンドは、空白でない 1 行で 1024 文字以内でなければなりません。制御文字と表示を偽る文字（ゼロ幅や双方向制御を含む Unicode の書式文字、行／段落区切り、ノーブレークスペース U+00A0）は拒否します。あなたが **Approve** を選びます（そのチャットで、またはそれが最新の質問である間は新しいチャットで）。その正確な回答を記録した後でのみ、型付きの設定コマンドがこのコマンドをインテントのチェックポイント用に認可します。
 
-> 進捗: 全体 19/33 | インセプションフェーズ完了。検証ゲート通過。
+> 進捗: 30 ステージ中 16 ステージ完了。次: Functional Design。
 
 ### 構築フェーズ（ステージ 3.1〜3.7）
 
@@ -320,7 +320,7 @@ aidlc engine bolt checkpoint --action verify --unit "notification-core" --kind s
 aidlc engine bolt checkpoint --action ask --unit "notification-core" --kind skeleton
 ```
 
-「Verified with `bun run verify:notifications` (exit 0). Approve this completed notification-core?」を **Approve** / **Request Changes** とともに提示し、待機します。コードスパンには要約ではなく、記録済みのコマンド全文が表示されます。あなたが **Approve** を選びます。承認を認可するのは、そのセッションでのこのチェックポイントの質問に対する、まさにその返答だけです。無関係な返答、別セッションの返答、別の質問への返答は認可しません。コンダクターは同じセッションであなたが実際に選んだものを記録し、あなたが選んでいない `--user-input` を渡すことはありません。
+「Verified with `bun run verify:notifications` (exit 0). Approve this completed notification-core?」を **Approve** / **Request Changes** とともに提示し、待機します。コードスパンには要約ではなく、記録済みのコマンド全文が表示されます。あなたが **Approve** を選びます。承認を認可するのは、このチェックポイントの質問に対する、まさにその返答だけです。そのチャットで、またはそれが最新の質問である間は新しいチャットで返答できます。無関係な返答、エージェント自身の言葉、別の質問への返答は認可しません。コンダクターはあなたが返答したチャットで実際に選んだものを記録し、あなたが選んでいない `--user-input` を渡すことはありません。
 
 ```bash
 aidlc engine bolt checkpoint --action approve --unit "notification-core" --kind skeleton --user-input 'Approve'
@@ -357,7 +357,7 @@ How should I continue building the remaining work?
 
 リント、ビルド、テスト、セキュリティ走査の各ステージを持つ CI パイプラインを設定します。品質ゲートは網羅率 >= 75%、重大な脆弱性なしです。
 
-> 進捗: 全体 26/33 | 構築完了。検証ゲート通過。
+> 進捗: 30 ステージ中 23 ステージ完了。次: デプロイパイプライン。
 
 ### 運用フェーズ（ステージ 4.1〜4.7）
 
@@ -368,8 +368,6 @@ How should I continue building the remaining work?
 **ステージ 4.4 — 可観測性セットアップ** — 通知配信遅延、メール送信率、デッドレターキュー深度の CloudWatch ダッシュボード。配信失敗用アラームも設定
 
 **ステージ 4.7 — フィードバックと最適化** — SLO 目標（アプリ内配信 99.9%、30 秒以内のメール配信 99%）、コスト分析、フィードバックループ文書
-
-> 進捗: 全体 33/33 | 運用完了。feature ワークフロー完了。
 
 ### バグ修正との主な違い
 

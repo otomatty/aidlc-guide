@@ -19,7 +19,7 @@ Windows PowerShell:
 irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.ps1 | iex
 ```
 
-ネイティブインストーラーには全ハーネスのランタイムが含まれます。Bun や Node.js は不要です。Windows では現在のアカウント向けにインストールし、bin ディレクトリを User PATH に自動で登録します。「管理者として実行」で開いたウィンドウでは警告と確認が出るので、通常の PowerShell ウィンドウから実行してください。別のセッションで `aidlc` が見つからないときは、新しいターミナルを開きます。永続的な PATH 変更と現在のプロセスの PATH 変更の両方を省くには [`-NoModifyPath`](guide/18-install-and-lifecycle.md#windows-powershell) を使います。
+ネイティブインストーラーは、全ハーネスのランタイムを含め、AI-DLC に必要なものをすべてセットアップします。Bun や Node.js をインストールする必要はありません。Windows では現在のアカウント向けにインストールし、bin ディレクトリを User PATH に自動で登録します。「管理者として実行」で開いたウィンドウでは警告と確認が出るので、通常の PowerShell ウィンドウから実行してください。すでに開いていたターミナルアプリや IDE は古い PATH を保持したままなので、そこで `aidlc` を使う前にいったん終了して開き直してください。その中で新しいタブを開くだけでは足りません。永続的な PATH 変更と現在のプロセスの PATH 変更の両方を省くには [`-NoModifyPath`](guide/18-install-and-lifecycle.md#windows-powershell) を使います。
 
 ### 2. 設定する
 

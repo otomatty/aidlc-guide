@@ -56,7 +56,7 @@ docs/                # Documentation
 
 リリースワークフローは、意図的に候補を保持する設計です。検証とインストーラーの lint を先に実行し、対象ごとのネイティブジョブでバイナリと証拠を作ります。`package-release.ts` は 1 回だけ実行して `release-candidate` を作成します。ステージングジョブは署名をせずにチェックサムを取ってアップロードし、Unix／Windows のライフサイクルジョブは同じバイト列を使います。`publish` は候補を再検証して証明を付け、エクスポートしたバンドルを加え、全資産を検査して 1 つの `attested-release` 成果物をアップロードします。`release` はタグとチェックサムを再確認し、`GITHUB_TOKEN` でこのリポジトリに GitHub Release を作成して、アップロード済み資産の一覧を検証します。候補の再ビルド、再パッケージ、差し替えは決して行いません。
 
-stable リリースは、`.github/workflows/release.yml` で push された版タグから始まります。タグを付ける前に、リリース準備の PR をマージし、その必須のブランチ検査を確認します。stable の公開は、タグの正確なソースとリリース資産を検証し、タグ付けしたコミットで Full Suite が通っていることを要求します。`release.yml` は通過済みの `full-suite-result` を再利用するか、自ら `full-suite.yml` を呼び出します。
+stable リリースは、選んだ公開済みプレビューのソースコミットを昇格させます。`promote-release.yml` を `main` 上で、プレビュータグ、stable の版、リリースノートを指定して実行します。入力なしで実行すると、利用できるプレビューを一覧します。用意されるタグには、版メタデータと固定された公開制御を持つ子コミットが 1 つ含まれます。`release.yml` はその関係を検証し、stable の成果物をビルドします。CI や Full Suite を繰り返さずに、パッケージングとネイティブ／インストーラー／ライフサイクル／アップグレードの検査を実行します。プレビューの結果と失敗はリリースノートに見えるまま残ります。公開後は、メタデータだけのブランチと PR リンクが、現在の `main` に版を記録します。[リリース手順](../../DEVELOPERS.md#4-promote-a-preview-to-production) を参照してください。
 分離された `.github/workflows/preview-release.yml` ワークフローは、`main` からのプレビュービルドを定期実行または手動ディスパッチし、契約の検査とリリース資産の検証でゲートし、ネイティブの義務と上限付きのライブスイートを実行し（決定的な層は PR／マージの CI に残ります）、`AIDLC_BUILD_VERSION` を埋め込み、決して「latest」にならない注釈付きタグのプレリリースを公開します。定期実行と手動実行は `release-preview` のワークフロー同時実行制御を共有します。後の各実行はリリースを読み直し、最新の公開済みプレビューがすでに同じソースコミット、またはそれを含むより新しいコミットを使っていれば公開をスキップします。その場合も検査と Full Suite は実行されます。同じ UTC 日付に `main` が再び進むと、プランナーは次の未使用の `.N` カウンターを割り当てます。下書きと孤立タグはその ID を予約するため、再試行もそれらを飛び越して進みます。Full Suite の失敗はプレビューの公開を止めません。プレビューのノートの末尾に Full Suite の失敗報告が付きます。別立ての Full Suite の実行は、Preview Release ワークフローを失敗させずに、失敗の状態を保持します。
 
 stable と preview の公開は、それぞれ `release` と `preview` の環境を使い、互いに独立して直列化します。同日中のカウンター割り当てを含む信頼の設計の全体は、[サプライチェーンセキュリティ](19-supply-chain-security.md) を参照してください。
@@ -136,12 +136,12 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 | `aidlc engine config get <key>` | `config-get` | `depth`、`test-strategy`、`review`、`guard-policy`、`sensors`、`learnings`、`summary-confirmation`、`collaborators`、または 4 つの `guard.<fence>` キーのいずれかを読む。廃止されたキー `change-control` は `guard-policy` に解決される |
 | `aidlc engine config list [--json]` | `config-list` | 13 個の設定すべてをこの順に読む。Guard Policy、フェンス、儀式の値には実効値の出所が含まれる |
 | `aidlc engine config set <key> <value> [--key value ...]` | `config-change --<key> <value> ...` | 与えられた設定フラグをすべて 1 つのトランザクションで適用する。どのキーもこのルートを使う |
-| `aidlc engine scope change --scope <name> [--key value ...]` | `scope-change --scope <name> ...` | スコープを再計画し、同じ 12 個の設定のいずれかを同じトランザクションで適用する。要求したスコープがすでに現在のスコープである場合も含む |
+| `aidlc engine scope change --scope <name> [--key value ...] [--person-words '<their words>']` | `scope-change --scope <name> ...` | スコープを再計画し、同じ 12 個の設定のいずれかを同じトランザクションで適用する。要求したスコープがすでに現在のスコープである場合も含む |
 
 `config-change` は 12 個の設定フラグと `--intent`、`--space`、`--project-dir` だけを受理し、最低 1 つの設定が必要です。未知のフラグは名前を示して拒否し、どの変更よりも前にすべての値を検証します。共有のユーティリティ applier は、候補の内容、`AuditEntryInput[]`、出力行を正規のキー順で返し、書き込みはしません。どちらの変更ハンドラも、状態の読み取り、適用、呼び出し側保持ロックモードでの `appendAuditEntries`、1 回の状態書き込みにわたって 1 つの `withAuditLock` を保持します。Guard Policy の値が動く場合は、どの書き込みよりも前に `assertChangeControlLedgerWritable` を呼びます。メモリ層の `Mode: strict` は、明示的な `--guard-policy relaxed` や `--guard-policy off` を、併記の設定やスコープ変更を含めてコマンド全体で拒否します。
 スコープ変更は、スコープが所有する Guard Policy を自動で引き上げることがあります。より低い既定値が新しいスコープに従うのは、その人がスコープ変更を求めた場合だけです。それ以外の場合は現在の保存値が残り、出力がその旨を 1 行で伝えます。実効値は引き続きメモリが制御します。
 
-状態とイベントの契約を保ちます。`review adversarial` は空の `Review Override` を保存します。明示的な Guard Policy の値は `(set by you)` を使います。明示的な儀式の値は、型付きのスイッチ、またはその人がオフにするよう求めた検査からの場合は `(set by you)`、それ以外は `(set by a command)` を使い、継承されたスコープの既定値はスコープの出所を保持します。スコープ変更は、明示的な上書きと、存在しない旧来の Guard Policy／儀式の行を保持します。実際に保存されたフィールドや出所の変更だけが設定イベントを生み、`Last Updated` を更新します。ユーティリティの applier は `GUARD_POLICY_SET`、`CEREMONY_SET`、フェンス切り替えの `GUARD_DISABLED`/`GUARD_RESTORED` のエントリを直接組み立てます。統制されたチェックポイントがメモリのポリシーの実効的な変更を観測した場合、`aidlc-lib.ts` は引き続き `appendGuardPolicySetRow` を使います。別々のセッターのラッパーを追加したり、複合した依頼を複数のディスパッチャー呼び出しへ分割したりしてはなりません。
+状態とイベントの契約を保ちます。`review adversarial` は空の `Review Override` を保存します。明示的な Guard Policy と儀式の値は、`settingTheirs` がその背後に本人を見つけた場合（型付きのスイッチ、本人の端末、または記録にある本人の返答と一致する `--person-words`）は `(set by you)`、それ以外は `(set by a command)` を使い、継承されたスコープの既定値はスコープの出所を保持します。スコープ変更は、明示的な上書きと、存在しない旧来の Guard Policy／儀式の行を保持します。実際に保存されたフィールドや出所の変更だけが設定イベントを生み、`Last Updated` を更新します。ユーティリティの applier は `GUARD_POLICY_SET`、`CEREMONY_SET`、フェンス切り替えの `GUARD_DISABLED`/`GUARD_RESTORED` のエントリを直接組み立てます。統制されたチェックポイントがメモリのポリシーの実効的な変更を観測した場合、`aidlc-lib.ts` は引き続き `appendGuardPolicySetRow` を使います。別々のセッターのラッパーを追加したり、複合した依頼を複数のディスパッチャー呼び出しへ分割したりしてはなりません。
 
 新しい設定は、素の `setField` ではなく名前付きのライターで行を書きます。そのため、以前のリリースの記録はその場で移行されます。Guard Policy のライターは `setGuardPolicyLine` で、残っている `Change Control` の行を 2 行目を足さずに改名します。`setGuardsOffLine` は、フェンスが初めて切り替えられたときに、その下へ `Guards Off` の行を挿入します。廃止されたキー、フラグ、見出し、状態フィールドは、1 リリースの間だけ読まれ、書かれることは決してありません。廃止された FLAG と CONFIG KEY の経路は `noteGuardPolicyRename` を呼ぶため、それを入力した呼び出し側には、プロセスごとにちょうど 1 行の非推奨の注意が表示されます。廃止された状態フィールド、メモリの見出し、スコープのフロントマターのキーは何も言わずに読まれます。以前のリリースが書いた記録を読んでいる人は、古い綴りを選んだわけではないからです。
 
@@ -167,8 +167,8 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 1. **`core/scopes/aidlc-hotfix.md` を作成** — スコープの識別。フロントマター:
    - `name`（必須）: スコープ名。ファイル名ステムと一致すること。
    - `depth`（必須）: `Minimal` | `Standard` | `Comprehensive`。
-   - `keywords`（任意）: `/aidlc <freeform text>` 自動検出の自然言語トリガー。フラットな文字列リストはブロック形式（`- item`）とフロー形式（`[item, item]`）を使える。単語境界で照合し、同点ならスコープ名のアルファベット順で決める。空リストで推論対象から除外する。5 単語を超える説明では、コアの高特異度許可リストからの肯定的な一致、または修正の依頼（依頼そのものとして使われた `fix` や `bugfix`）が必要。プラグイン固有の語には従来の長さによる判定が適用される。[スコープの自動検出](../guide/05-scopes-and-depth.md#auto-detection-from-freeform-intent) を参照。
-   - `description`（任意）: `/aidlc --help` と SKILL.md のコンパイル済みスコープ表に出る一行要約。
+   - `keywords`（任意）: `/aidlc <freeform text>` に対してエージェントがプランを提案するときに読むヒント語。ツールはこれを照合しない。フラットな文字列リストはブロック形式（`- item`）とフロー形式（`[item, item]`）を使える。空リストはヒントを持たない。[エージェントがプランを提案する](../guide/05-scopes-and-depth.md#the-agent-proposes-the-plan) を参照。
+   - `description`（任意）: `/aidlc --help` と、オーケストレータスキルの隣にある `tables.md` のコンパイル済みスコープ表に出る一行要約。
    - `testStrategy`（任意）: 深さに依存しないテスト戦略の上書き。既定は深さに合わせる。
    - `review_cap`（任意）: `adversarial` | `advisory` | `none`。そのスコープでのステージレビューの上限。省略時はスコープによる引き下げなし。ステージ宣言の強度を下げることはできるが、引き上げることはできない。自律スウォームのレビューは対象外。
    - `runner`（任意）: `true` を設定すると、既定で生成されるランナー集合にそのスコープが含まれる。
@@ -201,13 +201,13 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 
 2. **所属ステージにタグ付け** — `hotfix` 下で実行すべき各ステージ（`core/aidlc-common/stages/<phase>/` 配下）のフロントマター `scopes:` リストに `hotfix` を追加する。タグ付けしないステージはそのスコープで `SKIP`。初期化ステージ 3 つ（`workspace-scaffold`、`workspace-detection`、`state-init`）には必ず含める — 常に実行されます。
 
-3. **再コンパイル + スコープ表の再生成** — `aidlc engine graph compile` が `scopes:` タグを `tools/data/scope-grid.json` へ転置する。次に `aidlc engine gen scope-table` が、SKILL.md のコンパイル済みスコープ表用の正規 Markdown 領域を表示する。`<!-- BEGIN: compiled ... -->` / `<!-- END: compiled ... -->` マーカー間の領域は生成されたままに保ち、その後 `aidlc engine graph compile --check` と `aidlc engine gen scope-table --check` を実行して終了コード 0（ドリフトなし）を確認する。
+3. **再コンパイル + スコープ表の再生成** — `aidlc engine graph compile` が `scopes:` タグを `tools/data/scope-grid.json` へ転置する。次に `aidlc engine gen scope-table` が、オーケストレータスキルの隣にある `tables.md` のコンパイル済みスコープ表用の正規 Markdown 領域を表示する。`<!-- BEGIN: compiled ... -->` / `<!-- END: compiled ... -->` マーカー間の領域は生成されたままに保ち、その後 `aidlc engine graph compile --check` と `aidlc engine gen scope-table --check` を実行して終了コード 0（ドリフトなし）を確認する。
 
 4. **スコープ解決を検証** - `bun core/tools/aidlc-utility.ts intent-create --scope hotfix --project-dir /tmp/scope-smoke` が成功し、`Scope: hotfix` 付きの状態ファイルを生成すること。
 
 5. **`doctor` が環境既定として受け入れることを検証** — `AWS_AIDLC_DEFAULT_SCOPE=hotfix aidlc doctor` がその環境変数を有効と報告すること。
 
-6. **キーワード推論を検証**（`keywords` がある場合） — `aidlc engine scope detect --from-text --input "urgent customer issue" --project-dir /tmp/scope-smoke` が `{"scope":"hotfix","source":"keyword","matches":["urgent"]}` を返すこと。
+6. **プランのヒントが読みやすいか確認する**（`keywords` がある場合） - エンジンはもうこれを照合しない。エージェントがプラン提案の手順でこれを読む（`next "<a request your plan is for>" --project-dir /tmp/scope-smoke` が、すべてのプランをそのヒントとともに表示する）。自分のプランの行が、そのプランの用途を平易な言葉で述べていることを確かめる。
 
 7. **計画の一致を検証**（任意だが推奨） — `AIDLC_GRAPH_RESOLVE=1 aidlc engine graph resolve hotfix --stdout` がそのスコープの計画を出力するので、EXECUTE 集合がタグ付けと一致するか目視する。
 
@@ -221,8 +221,8 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 - エラーメッセージはコード変更なしで新しいスコープをアルファベット順に列挙します。
 - `/aidlc --doctor` は `AWS_AIDLC_DEFAULT_SCOPE=hotfix` を有効として扱います。
 - 進行中ワークフローでの `aidlc-utility scope-change --scope hotfix` は新しいスコープを受け入れます。
-- 転置ドリフトガード: ステージの `scopes:` タグを編集して `scope-grid.json` を再コンパイルしないと、`aidlc-graph compile --check` がビルドを失敗させます。SKILL.md のコンパイル済みスコープ表にも独自の `--check` ドリフトガード（t67）があります。
-- 自由形式 `/aidlc <text>` 呼び出しのキーワード検出は、各スコープの `keywords` を `.claude/scopes/*.md` フロントマターから読みます。独自の自然言語トリガーを持つカスタムスコープは、`keywords` リストを埋めた時点で自動検出されます（SKILL.md の変更は不要）。ユーザーは推論を迂回するため `--scope hotfix` を明示指定できます。
+- 転置ドリフトガード: ステージの `scopes:` タグを編集して `scope-grid.json` を再コンパイルしないと、`aidlc-graph compile --check` がビルドを失敗させます。`tables.md` のコンパイル済みスコープ表にも独自の `--check` ドリフトガード（t67）があります。
+- 自由形式 `/aidlc <text>` のプラン提案の手順は、各スコープを、その `.claude/scopes/*.md` フロントマターにある `keywords` のヒントとともに一覧します。エージェントはそれを読んでプランを提案します。カスタムスコープは、インストールされた時点でその一覧に現れます（SKILL.md の変更は不要）。ユーザーは提案を飛ばすため `--scope hotfix` を明示指定できます。
 
 ### 自動では検証されないこと
 
@@ -237,7 +237,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 
 1. **ステージファイルを書く** - `core/aidlc-common/stages/<phase>/<slug>.md` を作成。フロントマターは `slug`、`phase`、`execution`/`condition`、`lead_agent` と任意の `support_agents`（エージェントスラッグ）、`mode`（`inline`、`subagent`、`pipeline`、`mob` のいずれか。`agent-team` は予約済みで未実装）、`consumes` / `produces`（成果物語彙名）、ユニットごとに条件付きでのみ書く成果物用の `optional_produces`（ユニット単位カバレッジから除外）、`requires_stage`（順序エッジ）、`scopes:` 所属リスト、束縛する任意の `sensors:`、ユニットごとに反復するなら `for_each`、（ユニット単位ステージでは）各ユニットの種別へ `produces` 成果物を絞り込む任意の `produces_kinds` マップを宣言します。本文はステージの 3 区画を持ちます。フィールド契約の全体は [ステージ定義](15-stage-definition.md) を参照。
 
-2. **グラフを再コンパイル** — `aidlc engine graph compile` が新しいフロントマターを `tools/data/stage-graph.json` に読み、`scopes:` タグを `tools/data/scope-grid.json` へ転置します。`aidlc engine graph compile --check` で終了コード 0（ドリフトなし）を確認。その後、`aidlc engine gen stage-table` と `aidlc engine gen scope-table` で生成された SKILL.md のミラーを更新し、`aidlc engine gen stage-table --check` と `scope-table --check` の両方が終了コード 0 で終わることを確認する。ステージは直後に `aidlc engine orchestrate next --stage <slug> --single` で実行可能です。
+2. **グラフを再コンパイル** — `aidlc engine graph compile` が新しいフロントマターを `tools/data/stage-graph.json` に読み、`scopes:` タグを `tools/data/scope-grid.json` へ転置します。`aidlc engine graph compile --check` で終了コード 0（ドリフトなし）を確認。その後、`aidlc engine gen stage-table` と `aidlc engine gen scope-table` で `skills/aidlc/tables.md` にある生成された表のミラーを更新し、`aidlc engine gen stage-table --check` と `scope-table --check` の両方が終了コード 0 で終わることを確認する。ステージは直後に `aidlc engine orchestrate next --stage <slug> --single` で実行可能です。
 
 3. **ランナーを再生成** — `aidlc engine gen runners` が実行可能なコンパイル済みステージごとに `/aidlc-<slug>` ランナースキルを出すので、新ステージは手著述なしで入力可能コマンドを得ます。`aidlc engine gen runners --check` でディスク上のランナー集合がコンパイル済みステージ集合と一致することを確認（ドリフトガード。ブートストラップ初期化ステージは設計上除外）。
 
@@ -250,7 +250,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 ### 自動で検証されること
 
 - **グラフ配置。** `compile` するとステージのエッジ（`requires_stage`、`consumes`、`produces`）が解決・順序付けされ、ディスク上の `stage-graph.json` がフロントマターからずれると `compile --check` がビルドを失敗させます。
-- **生成されたステージ表。** SKILL.md のステージグラフ表はコンパイル済み `stage-graph.json` から描画され、生成領域がずれると `aidlc-utility stage-table --check` が失敗します（t32）。
+- **生成されたステージ表。** オーケストレータスキルの隣にある `tables.md` のステージグラフ表はコンパイル済み `stage-graph.json` から描画され、生成領域がずれると `aidlc-utility stage-table --check` が失敗します（t32）。
 - **スキーマ + 参照。** `aidlc-graph.ts compile` は `aidlc-stage-schema.ts` 経由で各ステージのフロントマターを検証し、`/aidlc --doctor` は `validateStageFrontmatter` に加え、すべての `lead_agent` / `support_agents` / `consumes` スラッグが解決する「グラフ参照」検査を再実行します。
 - **ランナー一致。** `aidlc-runner-gen.ts check`（と `t129`）は、コンパイル済みステージにランナーが無い、または消えたステージにランナーが残っている場合に失敗します。
 

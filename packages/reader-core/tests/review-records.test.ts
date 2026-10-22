@@ -225,6 +225,63 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
       });
     });
 
+    // v2.11.1 reviewCompletionDidNotFinish: the NOT-READY the engine records
+    // when a retried review wrote nothing is no reviewer's verdict.
+    describe("a review that did not finish", () => {
+      it.each([
+        ["marked Review Finished: no", { finished: "no" }],
+        ["recorded before the field with an empty body", { body: "" }],
+        ["marked no with an empty body", { finished: "no", body: "" }],
+      ])("shows no verdict for a NOT-READY %s", async (_, options) => {
+        const fixture = reviewFixture({ verdict: "NOT-READY", ...options });
+        await save(fixture);
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBeNull();
+      });
+
+      it.each([
+        ["a reviewer's NOT-READY with a body", "NOT-READY", { finished: undefined, body: "## Review\n" }],
+        ["an empty body marked Review Finished: yes", "NOT-READY", { finished: "yes", body: "" }],
+        ["a READY marked Review Finished: no", "READY", { finished: "no", body: "" }],
+      ] as const)("keeps %s", async (_, verdict, options) => {
+        const fixture = reviewFixture({ verdict, ...options });
+        await save(fixture);
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBe(verdict);
+      });
+
+      it("reads the marker, not the body, when the record is not on this machine", async () => {
+        const marked = reviewFixture({ verdict: "NOT-READY", finished: "no" });
+        await audit(marked.request + marked.completion);
+        expect(await read()).toBeNull();
+        // Without the marker an absent record cannot show an empty body.
+        const unmarked = reviewFixture({ verdict: "NOT-READY", body: "" });
+        await audit(unmarked.request + unmarked.completion);
+        expect(await read()).toBe("NOT-READY");
+      });
+
+      it("consumes its request, so a replayed completion cannot substitute a verdict", async () => {
+        const unfinished = reviewFixture({ verdict: "NOT-READY", finished: "no" });
+        const replay = reviewFixture();
+        await save(unfinished);
+        await audit(
+          unfinished.request +
+            unfinished.completion +
+            reviewAudit("REVIEW_COMPLETED", replay.completionFields, 3),
+        );
+        expect(await read()).toBeNull();
+      });
+
+      it("gives way to the next finished review", async () => {
+        const unfinished = reviewFixture({ verdict: "NOT-READY", finished: "no" });
+        const next = reviewFixture({ id: "b", iteration: 2, second: 3 });
+        await save(unfinished);
+        await save(next);
+        await audit(unfinished.request + unfinished.completion + next.request + next.completion);
+        expect(await read()).toBe("READY");
+      });
+    });
+
     it("does not read orphan JSON without a paired request and completion", async () => {
       const fixture = reviewFixture();
       await save(fixture);

@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-quality-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -57,16 +57,16 @@
 
 | ファイル | 内容 |
 |----------|------|
-| nfr-reliability-guide.md | 信頼性テストの方法論とレジリエンス検証 |
+| nfr-reliability-guide.md | 信頼性の目標設定（SLA/SLO/SLI、可用性、復旧目標）と可観測性の要件 |
 | nfr-validation-methods.md | NFR 検証手法（負荷テスト、パフォーマンスプロファイリング） |
 | test-strategy-patterns.md | テストピラミッドのパターン、テストデータ戦略、品質ゲート設計 |
 | testing-guide.md | テスト方法論とテストケース設計原則 |
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-quality-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-quality-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のテストフレームワーク、カバレッジ目標、パフォーマンス
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空の状態で作成します）。既存のテストフレームワーク、カバレッジ目標、パフォーマンス
 ベースライン、品質ゲートしきい値など、プロジェクト固有の QA コンテキストをチームが格納します。
 
 ---

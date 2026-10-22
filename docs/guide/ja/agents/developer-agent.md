@@ -4,9 +4,9 @@
 
 aidlc-developer-agent は、あなたのシニアソフトウェア開発者です。アーキテクチャ設計と作業ユニット仕様を、本番品質のコードへ変換します。リバースエンジニアリングでは、aidlc-architect-agent が統合に使うための詳細なコードスキャンを実行します。
 
-aidlc-developer-agent は、Reverse Engineering のコードスキャンと Code Generation を主導し、構想フェーズの両アンサンブルにディスパッチされるコラボレーターでもあります。Practices Discovery のハブアンドスポークではコードパターンの証拠を検分し、User Stories のモブでは実装可能性の観点（implementability voice）を担います。Code Generation は集中型のサブエージェントとして動作します。ビルドツール、パッケージマネージャー、テストコマンドを実行するために Bash を利用できます。
+aidlc-developer-agent は、Reverse Engineering のコードスキャンと Code Generation を主導し、構想フェーズの両アンサンブルにディスパッチされるコラボレーターでもあります。Practices Discovery のハブアンドスポークではコードパターンの証拠を検分し、User Stories のモブでは実装可能性の観点（implementability voice）を担います。Code Generation は集中型のサブエージェントとして動作します。ビルドツール、パッケージマネージャー、テストコマンドの実行には Bash を使うことが想定されています。
 
-Workspace Detection（0.2）は以前、aidlc-developer-agent がサブエージェントとして主導していましたが、現在は `aidlc-utility intent-create` 内でルールに基づくスキャナーとして決定論的に実行されます。そのため aidlc-developer-agent は、もはや初期化フェーズには関与しません。
+初期化フェーズは、Workspace Detection も含めて決定論的なツールとして実行されます。aidlc-developer-agent はこれに関与しません。
 
 ## 主導ステージ
 
@@ -36,7 +36,7 @@ aidlc-developer-agent は、aidlc-architect-agent から作業ユニット仕様
 
 ## 主要原則
 
-- 動作し、テスト済みの実装をまず届け、リファクタリングは次の反復で行う
+- 動作し、テスト済みの実装を届ける。Testing Contract にリファクタリングの手順が含まれる場合（TDD、BDD、ATDD、またはカスタム）は、最初の生成の中でリファクタリングする
 - プロジェクトに既存のパターンと規約に従う
 - 読みやすく、デバッグしやすいコードを書く。凝りすぎた抽象化は避ける
 - 入力は早期に検証し、意味のあるエラーを投げ、例外を握りつぶさない

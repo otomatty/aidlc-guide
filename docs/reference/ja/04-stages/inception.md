@@ -32,10 +32,10 @@ Inception はステージ 2.1 から 2.9（9 ステージ）を走り、Construc
 | feature          | All 2.1--2.9                                                   |
 | mvp              | 2.1 (if brownfield), 2.2, 2.3, 2.4, 2.5 (if UI), 2.6, 2.7, 2.8, 2.9 |
 | poc              | 2.1 (if brownfield), 2.3 (minimal)                             |
-| bugfix           | 2.1 (always -- find the bug), 2.3 (minimal -- bug description) |
-| refactor         | 2.1 (always -- understand current code), 2.3 (minimal)         |
+| bugfix           | 2.1 (if brownfield -- find the bug), 2.3 (minimal -- bug description) |
+| refactor         | 2.1 (if brownfield -- understand current code), 2.3 (minimal)  |
 | infra            | 2.2, 2.3 (infra requirements)                                  |
-| security-patch   | 2.1 (find vulnerability context), 2.3 (minimal)                 |
+| security-patch   | 2.1 (if brownfield -- find vulnerability context), 2.3 (minimal) |
 | classic          | 2.1--2.9                                                       |
 | workshop         | 2.1--2.9                                                       |
 | express          | 2.1 (if brownfield), 2.3                                      |
@@ -86,7 +86,7 @@ Reverse Engineering は、brownfield プロジェクト向けに既存コード�
 
 1. **Check Conditions** -- `<record>/aidlc-state.md` を読み、プロジェクト種別が brownfield か確認します。brownfield でなければ、このステージを `aidlc engine orchestrate report --stage reverse-engineering --result skipped --reason "greenfield workspace has no existing codebase to reverse engineer"` で飛ばします。エンジンは `[S]` を記録し、原子的に先へ回します。
 
-2. **Developer Code Scan** -- Task ツールで aidlc-developer-agent サブエージェント（`subagent_type="aidlc-developer-agent"`）へ委譲します。委譲プロンプトには `agents/aidlc-developer-agent.md` のペルソナと `.claude/knowledge/aidlc-developer-agent/` のナレッジを含めます。文脈として `aidlc-state.md` のワークスペース状態も入れます。
+2. **Developer Code Scan** -- Task ツールで aidlc-developer-agent サブエージェント（`subagent_type="aidlc-developer-agent"`）へ委譲します。エージェントのペルソナとナレッジは自動で読み込まれ、コンダクターはペルソナを注入しません。文脈として `aidlc-state.md` のワークスペース状態も入れます。
 
    developer がコードベース全体で見るもの:
    - 全パッケージ、モジュールとその目的
@@ -97,11 +97,25 @@ Reverse Engineering は、brownfield プロジェクト向けに既存コード�
    - コード品質の指標（lint、CI/CD、ドキュメント）
    - 技術的負債の信号
 
-   developer は、`{{HARNESS_DIR}}/knowledge/aidlc-developer-agent/re-artifacts.md` の Developer Code Scan Template に従った構造化スキャン結果を返します。
+   developer は、`{{HARNESS_DIR}}/knowledge/aidlc-developer-agent/re-artifacts.md` の Developer Code Scan Template に従ったスキャンを、永続的な受け渡しファイルへ書きます。プロジェクトルートのリポジトリでは `<record>/inception/reverse-engineering/developer-scan.md`、登録済みリポジトリでは `developer-scan-<repo>.md` です。戻り値が示すのはそのパスと懸念事項で、スキャン本文ではありません。
 
-3. **Architect Synthesis** -- Task ツールで aidlc-architect-agent サブエージェント（`subagent_type="aidlc-architect-agent"`）へ委譲します。委譲プロンプトには `agents/aidlc-architect-agent.md` のペルソナと `.claude/knowledge/aidlc-architect-agent/` のナレッジを含めます。developer のスキャン結果一式を文脈として渡し、`aidlc-state.md` のワークスペース状態も入れます。リポジトリの出力ディレクトリは `aidlc-utility.ts codekb-path --repo <repo>` で解決します。スキャンの直前に `codekb-snapshot` でソース／ストア世代を取ります。既存ストアとそのスナップショットを architect へ渡します。
+3. **Architect Synthesis** -- Task ツールで aidlc-architect-agent サブエージェント（`subagent_type="aidlc-architect-agent"`）へ委譲します。こちらもペルソナとナレッジは自動で読み込まれます。developer の受け渡しパス（architect がそのファイルを読みます）とテンプレートのパスを渡し、`aidlc-state.md` のワークスペース状態も入れます。リポジトリの出力ディレクトリは `aidlc engine workspace codekb --repo <repo>` で解決します。スキャンの直前に `codekb-snapshot` でソース／ストア世代を取り、既存ストアとそのスナップショットを architect へ渡します。ストアがまだ無い brownfield プロジェクトでは次のようになります:
 
-   architect はスキャン結果を、一時の完全候補ディレクトリへ 9 つの出力成果物（下の Outputs）として合成します。エンジンはその候補を `codekb-publish` で公開します。ソース変更や並行する共有ストア世代があれば拒否し、再試行の前に新しいスキャンまたは再マージを求めます。
+   ```text
+   $ aidlc engine workspace codekb-snapshot --repo shop-api --paths ./ --json
+   {"repo":"shop-api","store":"aidlc/spaces/default/codekb/shop-api/","paths":["./"],"store_generation":"none","source_fingerprint":"git:bc8ac8583f61da1edd5bdc681a9db722a937848b","head_commit":"0107291c4e5f2a8b9d3e6f1a7c8b2d4e5f6a7b8c"}
+   ```
+
+   architect はスキャン結果を、完全候補ディレクトリ `<record>/.aidlc-engine/codekb-stage-<repo>/` へ 9 つの出力成果物（下の Outputs）として合成します。続いて `codekb-publish` が、スナップショットの値を渡し返されて、それをストアへ差し替えます:
+
+   ```text
+   aidlc engine workspace codekb-publish --repo shop-api \
+     --staged <record>/.aidlc-engine/codekb-stage-shop-api/ \
+     --paths ./ --expect-store none \
+     --expect-source git:bc8ac8583f61da1edd5bdc681a9db722a937848b --json
+   ```
+
+   スナップショットの後に別のインテントがストアへ公開していた場合は `CODEKB_STORE_CHANGED` で拒否します（ストアを読み直し、再マージし、新しいスナップショットを取って再試行します）。Guard Policy が strict のときは、スナップショットの後にコードが変わっていれば `CODEKB_SOURCE_CHANGED` でも拒否します（もう一度スキャンします）。relaxed または off のときは、取ったとおりのスキャンを公開し、変更の通知を返します。
 
 4. **Prepare Completion** -- 成果物 9 つがすべて存在することを確認します。`aidlc-state.md` は編集しません。ライフサイクル完了はゲート後の report のものです。
 
@@ -109,7 +123,7 @@ Reverse Engineering は、brownfield プロジェクト向けに既存コード�
 
 ### Outputs
 
-各リポジトリの成果物 9 つは `aidlc/spaces/<active-space>/codekb/<repo>/` へ書きます。ディレクトリは `aidlc-utility.ts codekb-path --repo <repo>` が印字するそのままです:
+各リポジトリの成果物 9 つは `aidlc/spaces/<active-space>/codekb/<repo>/` へ書きます。ディレクトリは `aidlc engine workspace codekb --repo <repo>` が印字するそのままです:
 
 | #  | File                             | Contents                                                    |
 |----|----------------------------------|-------------------------------------------------------------|
@@ -125,14 +139,13 @@ Reverse Engineering は、brownfield プロジェクト向けに既存コード�
 
 ### Approval Gate
 
-標準の 2 択ゲート: **Approve**（Requirements Analysis へ進む） / **Request Changes**。
+標準の 2 択ゲート: **Approve** / **Request Changes**。ステージファイルは Approve に「Requirements Analysis へ進む」とラベルを付けていますが、エンジンは計画が実行する次のステージへ回します。Practices Discovery を含むスコープでは、それが Practices Discovery です。
 
 ### Notes
 
-- **再実行ガード:** このステージは、人が再利用か再スキャンかを選ぶ前に、各 brownfield リポジトリの記録スコープとフィンガープリントを検証します。上流参照からの意図した逸脱で、SKILL.md の "Deliberate Deviations" 節に書いてあります。
+- **再実行ガード:** このステージは、人が再利用か再スキャンかを選ぶ前に、各 brownfield リポジトリの記録スコープとフィンガープリントを検証します。
 - **2 段パイプライン:** aidlc-developer-agent が生のコードスキャンを行い（リンク 1、リード）、aidlc-architect-agent がスキャンを構造化成果物へ合成して書きます（リンク 2、最終リンク）。スキャンは徹底し（developer の視点）、合成はアーキテクチャに通じたものになります（architect の視点）。
-- bugfix と refactor スコープでは、greenfield に近い場合でもこのステージは必ず走ります。既存コードの理解が欠かせないからです。
-- security-patch スコープでは、脆弱性の文脈を見つけるために走ります。
+- bugfix、refactor、security-patch では、修正または変更するコードを理解するために、brownfield の作業で走ります。greenfield の作業では、どのスコープとも同じく、作成時に SKIP に設定されます。
 - ここで出る 9 成果物は、Requirements Analysis（2.3）、User Stories（2.4）、Domain Design（2.6）、Units Generation（2.7）が消費します。
 - `architecture.md` には、ビジネストランザクションがコンポーネント横断でどう実装されるかを示す Interaction Diagrams が必須です。シーケンスまたはフロー図を使います。
 
@@ -186,7 +199,16 @@ Practices Discovery は、AI-DLC で二軸設定モデルの両行へ書く唯�
 4. **Human Interview** -- スポーク 3 つが戻ったあと、構造化した質問を出します。brownfield は証拠の穴と方針判断を聞き、greenfield は 5 つのプラクティス領域すべてを、org 既定を提案として聞きます。再実行は以前確認した文を事前入力します。質問と正確な答えをすべて残します。
 5. **Lead Integration** -- 下書き、寄与パス 3 つ、インタビューの答えを持たせて pipeline-deploy リードを再ディスパッチします。リードだけが最終成果物を統合し、`PRACTICES_DISCOVERED` を出します。混在する拍子は `Methodology: custom` を使い、Code Generation が答えを TDD へ押し込めず、明示の順序を保つようにします。
 6. **Open the Affirmation Gate** -- 聞く前に `aidlc engine orchestrate report --stage practices-discovery --result awaiting-approval` を呼びます。下書きをちょうど 2 択で出します: **Approve** / **Request Changes**。Request Changes は `--result rejected` で報告し、昇格は起きません。
-7. **Promote After Human Approval** -- 人が Approve を選んだあとだけ、決定論的な昇格をアクティブスペースの `team.md` と `project.md` へ走らせます。先に `project.md`、続けて `team.md` を書き、`PRACTICES_AFFIRMED` を出します。昇格が失敗したら `PRACTICES_OVERRIDE` を出し、ステージを `[?]` のままゲートを開け、承認は報告しません。
+7. **Promote After Human Approval** -- 人が Approve を選んだあとだけ、決定論的な昇格をアクティブスペースの `team.md` と `project.md` へ走らせます:
+
+   ```text
+   aidlc engine state practices-promote \
+     --team-practices <record>/inception/practices-discovery/team-practices.md \
+     --discovered-rules <record>/inception/practices-discovery/discovered-rules.md \
+     --affirming-user "<user>"
+   ```
+
+   先に `project.md`、続けて `team.md` を書き、`PRACTICES_AFFIRMED` を出します。昇格が失敗したら `PRACTICES_OVERRIDE` を出し、ステージを `[?]` のままゲートを開け、承認は報告しません。
 8. **Verify Receipt, Then Report** -- 昇格が成功すると、原子的に `Practices Affirmed Timestamp` と一致する `PRACTICES_AFFIRMED` 監査レシートを記録します。そのあと `aidlc engine orchestrate report --stage practices-discovery --result approved --user-input "Approve"` を呼びます。エンジンは寄与ファイル 3 つ（協働者がオフのときは無し）と、いまの試行のレシートを検証してから完了し、回します。
 
 ### Approval Gate
@@ -195,7 +217,7 @@ Practices Discovery は、AI-DLC で二軸設定モデルの両行へ書く唯�
 
 ### Notes
 
-- `.claude/tools/aidlc-lib.ts` の `replaceSection` ヘルパはマイルストーン 8 で、team.md の行またぎ昇格のために足しました（既存の `appendUnderHeading` は再実行で重複を蓄積します）。
+- 昇格は `team.md` の各節の本文を置き換え、見出しは残します（`.claude/tools/aidlc-lib.ts` の `replaceSection`）。そのため再実行しても、`appendUnderHeading` のように重複が積み上がることはありません。
 - `org.md` と `team.md` は同じ Title Case 見出し集合を共有します（`## Way of Working`、`## Walking Skeleton`、`## Testing Posture`、`## Deployment`、`## Code Style`）。ステージは `extractMarkdownSection` で一致する Title Case 見出しから `org.md` の各節を読み、同じ見出しを `team.md` で節置換します。
 - Code Generation の決定論的な姿勢リゾルバは、構造化した Testing Posture フィールドを、カバレッジ、ツール、スコープの注記から独立して読みます。プロジェクトだけのカバレッジ注記は、チーム節の方法論を消さずに専門化します。
 - 再開時は、リード下書きと既存の寄与ファイルをすべて残します。欠けたスポークだけディスパッチし、インタビューとリード統合へ続けます。完了したサポート作業は繰り返しません。
@@ -226,11 +248,12 @@ Requirements Analysis は、利用者のインテントと、あればリバー�
 ### Inputs
 
 - ステージ 2.1 の Reverse Engineering 成果物（`aidlc/spaces/<active-space>/codekb/<repo>/`）、brownfield のとき
-- インテントの `audit/` シャードにある、利用者のプロジェクト説明
+- `project-description` ユーティリティから得る正式なプロジェクト説明（監査の `Request` から組み立て直すことは決してしない）
+- Ideation の意図声明とスコープ文書、および Practices Discovery のチームプラクティス（それらのステージが走った場合）
 
 ### Steps
 
-1. **Load Prior Context** -- brownfield なら `aidlc/spaces/<active-space>/codekb/<repo>/` から RE 成果物を読みます。インテントの `audit/` シャードから利用者のプロジェクト説明を読みます。
+1. **Load Prior Context** -- brownfield なら `aidlc/spaces/<active-space>/codekb/<repo>/` から RE 成果物を読みます。プロジェクト説明は `project-description` で読みます。
 
 2. **Analyze User Request** -- リクエストを次で評価します:
    - **Clarity**: リクエストはどれだけ定義されているか
@@ -320,14 +343,14 @@ Requirements Analysis は、利用者のインテントと、あればリバー�
 | Condition        | CONDITIONAL -- execute for user-facing features, multiple personas, complex business logic, or cross-team work |
 | Lead Agent       | aidlc-product-agent                                                          |
 | Support Agents   | aidlc-design-agent, aidlc-developer-agent, aidlc-quality-agent               |
-| Mode             | mob (the 2.5.0 mob-elaboration showcase; lead only when collaborators are off) |
+| Mode             | mob (lead only when collaborators are off)                             |
 | Completion Emoji | :books:                                                                |
 
 ### Purpose
 
 User Stories は、正式な要件を、各機能の「誰が、何を、なぜ」を定義するユーザー中心のストーリーへ訳します。二部構成です。PART 1 が確認質問付きのストーリー計画を作り、PART 2 が実際のストーリーとペルソナを生成します。計画とストーリーは完了ゲートでまとめてレビューします。
 
-このステージはモブ精錬の見本（mode: mob）です。Product Manager がリードし、design、developer、quality エージェントをリード下書きに対する独立した協働者としてディスパッチします。ブラインドラウンド、統合、有界の異議ラウンド 1 回。そのあと Product Leader がレビューします。aidlc-design-agent の UX 視点は、上流参照に無い意図した追加で、SKILL.md の "Deliberate Deviations" 節に書いてあります。
+このステージはモブ精錬の見本（mode: mob）です。Product Manager がリードし、design、developer、quality エージェントをリード下書きに対する独立した協働者としてディスパッチします。ブラインドラウンド、統合、有界の異議ラウンド 1 回。そのあと Product Leader がレビューします。aidlc-design-agent の UX 視点は、上流参照に無い意図した追加です。
 
 ### Inputs
 
@@ -336,7 +359,7 @@ User Stories は、正式な要件を、各機能の「誰が、何を、なぜ�
 
 ### Steps
 
-1. **Load the Lead Persona** -- `agents/aidlc-product-agent.md` から aidlc-product-agent ペルソナを、`.claude/knowledge/aidlc-product-agent/` からナレッジを読みます。サポートエージェント（design、developer、quality）はインラインでは読みません。モブステージなので、生成中に独立した協働者としてディスパッチします。
+1. **Load the Lead Persona** -- ステップが aidlc-product-agent のペルソナ（`lead_persona`）を運びます。そのナレッジを `.claude/knowledge/aidlc-product-agent/` から読みます。サポートエージェント（design、developer、quality）はインラインでは読みません。モブステージなので、生成中に独立した協働者としてディスパッチします。
 
 2. **Validate User Stories Are Needed** -- このプロジェクトでユーザーストーリーが価値を足すかを評価します:
    - **Execute if**: ユーザー向け機能、複数ユーザーペルソナ、複雑なビジネスロジック、チーム横断の調整が要る
@@ -397,6 +420,7 @@ User Stories は、正式な要件を、各機能の「誰が、何を、なぜ�
 | `stories.md`                   | 受け入れ基準、優先度、依存、INVEST 注記付きのユーザーストーリー |
 | `personas.md`                  | ユーザーペルソナ定義、関係、優先順位    |
 | `user-stories-assessment.md`   | Execute / skip の判断と根拠、考慮した要因   |
+| `traceability.json`            | `requirements.md` のすべての `FR` と `NFR` の ID（下位要件を持つ要件はその `FR{n}.{m}` ID で）をストーリーへ対応づけたもの（`OK`）、または下流のステージ名を添えた `Deferred`、もしくは理由を添えた `N/A`。`traceability` センサーが検査 |
 | `user-stories-questions.md`    | `[Answer]:` タグ付きの確認質問を含むストーリー計画（入力成果物） |
 | `contributions/aidlc-{design,developer,quality}-agent.md` | ゲート前にリードが統合する、互いに見えないサポート寄与 |
 
@@ -411,8 +435,8 @@ User Stories は、正式な要件を、各機能の「誰が、何を、なぜ�
 - ユーザーストーリーの優先度（MoSCoW）は MVP 境界を知らせますが、決めません。正式な MVP 境界は Delivery Planning（ステージ 2.9）で置きます。
 - `user-stories-assessment.md` はステージを飛ばすときでもいつも作り、根拠を残します。
 - 協働者がオンのとき、識別情報付き寄与ファイル 3 つは必須のアンサンブル証拠です。リードが 3 つを統合するまで承認は拒否されます。リードだけの実行では何も求められません。
-- ここで出るストーリーは、Refined Mockups（2.5）、Domain Design（2.6）、Units Generation（2.7）、Delivery Planning（2.9）が消費します。
-- aidlc-design-agent のサポートは、UX に通じた開発のための意図した追加で、SKILL.md の Deliberate Deviations 節に書いてあります。
+- ここで出るストーリーは、Refined Mockups（2.5）、Domain Design（2.6）、Units Generation（2.7）、Delivery Planning（2.9）、そして各ユニットの受け入れ基準を辿る Functional Design（3.1）が消費します。
+- aidlc-design-agent のサポートは、ストーリーに UX の視点を加えます。
 
 ---
 
@@ -424,7 +448,7 @@ User Stories は、正式な要件を、各機能の「誰が、何を、なぜ�
 |------------------|------------------------------------------------------------------------|
 | Phase            | Inception                                                              |
 | Stage #          | 2.5                                                                    |
-| Condition        | CONDITIONAL -- skip for non-UI, API-only, or infrastructure-only initiatives |
+| Condition        | CONDITIONAL -- execute when user-facing UI exists and rough mockups were produced in Ideation; for APIs, refine interaction diagrams |
 | Lead Agent       | aidlc-design-agent                                                           |
 | Support Agents   | aidlc-product-agent (validates against stories)                              |
 | Mode             | inline                                                                 |
@@ -436,7 +460,7 @@ Refined Mockups は、Ideation ステージ 1.6 の粗いコンセプトワイ�
 
 非 UI の取り組み（API のみ、バックエンド）では、インタラクション図を API 開発者体験の仕様へ洗練します。
 
-ステージ 1.6（Rough Mockups）も飛ばしていれば、このステージも通常飛ばします。
+classic や workshop のようにステージ 1.6（Rough Mockups）が走らなかった場合は、ストーリーと要件から洗練モックを設計します。
 
 ### Inputs
 
@@ -485,7 +509,7 @@ Refined Mockups は、Ideation ステージ 1.6 の粗いコンセプトワイ�
 
 ### Notes
 
-- スキップ条件: 非 UI、API のみ、インフラのみの取り組み。ステージ 1.6（Rough Mockups）を飛ばしていれば、通常こちらも飛ばします。
+- ユーザー向け UI があるときに走ります。API では、インタラクション図を API 開発者体験の仕様へ洗練します。Rough Mockups が走らなかった場合（classic、workshop）は、代わりにストーリーと要件から設計します。
 - mvp スコープでは、プロジェクトに UI があるときだけ走ります。
 - ここで出るモックは Domain Design（2.6）へ入り、最終的に Construction の Code Generation（3.5）の UI コンポーネントへ入ります。
 - アクセシビリティチェックリストは、Build and Test（3.6）へ入るテスト可能な基準を与えます。
@@ -546,7 +570,7 @@ aidlc-aws-platform-agent はマネージドサービス依存の補助視点を�
 |-----------------------------------|-----------------------------------------------------------|
 | `components.md`                   | 囲み `yaml` コンポーネントカタログ（正本）: 各コンポーネントの `behaviour`、`responsibilities`、`depends_on` / `dependents`、`external_dependencies`、所有する `entities`（`identifier`、属性、コンポーネント横断の `references`）。続けて派生した人向けビュー: mermaid Component Diagram、Component Summary、Entity Ownership、External Dependencies、Rationale 表 |
 | `decisions.md`                    | ADR ログ — 主要な設計判断とその根拠を残すアーキテクチャ決定記録 |
-| `traceability.json`               | 上流の各 `USx.y`（なければ `FR`）を、実現する `components.md` のコンポーネントまたはエンティティへ対応づけるカバレッジ表。`traceability` センサーが検証 |
+| `traceability.json`               | 上流の各 `USx.y`（なければ `FR`。下位要件を持つ要件はその `FR{n}.{m}` ID で）を、実現する `components.md` のコンポーネントまたはエンティティへ対応づけるカバレッジ表。`traceability` センサーが検証 |
 
 加えて、入力として質問ファイルを作ります:
 
@@ -626,7 +650,7 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 
 6. **Prepare Completion** -- ユニット成果物を検証し、Construction 向けにユニット一覧を残します。状態は編集しません。ゲート結果は `aidlc-orchestrate.ts` で報告します。
 
-7. **Present Completion & Request Approval** -- :wrench: 絵文字、定義したユニットの要約、対応づけた依存、割り当てたストーリー、レビューパス付きで完了メッセージを出します。標準の 2 択承認ゲート: Approve（Construction フェーズへ） / Request Changes。
+7. **Present Completion & Request Approval** -- :wrench: 絵文字、定義したユニットの要約、対応づけた依存、割り当てたストーリー、レビューパス付きで完了メッセージを出します。標準の 2 択承認ゲート: Approve（エンジンが示す次のステージへ） / Request Changes。
 
 ### Outputs
 
@@ -636,7 +660,7 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 |---------------------------------|-------------------------------------------------------------|
 | `unit-of-work.md`               | ユニット定義（名前、説明、境界）、責任、ユニットごとのデプロイモデル（standalone / shared / embedded）、相対複雑さの見積もり（S/M/L/XL）、ユニット kind（`service` / `spec` / `ui` / `packaging` / `library`。どの Construction 設計成果物が効くかを駆動）、実装注記と制約 |
 | `unit-of-work-dependency.md`    | ユニット間の依存 DAG（有向辺、循環なし）、統合点（API／共有データ／イベント）、並行開発の機会（互いの依存が無いユニット集合）。トポロジのみ。経済的な道の選択（推奨順、クリティカルパス）は 2.9 の仕事。囲み `yaml` 辺ブロックは DAG を鏡写しし、各ユニットに任意の `kind:` を付けられます（[Runtime graph](../13-runtime-graph.md) の `bolt_dag.units[].kind`） |
-| `unit-of-work-story-map.md`     | 上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。`stories.md` が作られる場合は `USx.y` で、`USx.y` の行だけを読む。それ以外は `FR` と、スコープがトレースする NFR があれば任意の `NFR` 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある） |
+| `unit-of-work-story-map.md`     | 上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。`stories.md` が作られる場合は `USx.y` で、`USx.y` の行だけを読む。それ以外は `FR`（下位要件を持つ要件はその `FR{n}.{m}` ID で）と、スコープがトレースする NFR があれば任意の `NFR` 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある） |
 | `traceability.json`             | 生成したユニット成果物からユニット集合を導き、列挙したすべての ID が宣言した対象ユニットへ対応づくことを検証するカバレッジ表。`traceability` センサーが検証 |
 
 加えて、入力として質問ファイルを作ります:
@@ -647,7 +671,7 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 
 ### Approval Gate
 
-標準の 2 択ゲート: **Approve**（Construction フェーズへ） / **Request Changes**。
+標準の 2 択ゲート: **Approve**（エンジンが示す次のステージへ） / **Request Changes**。
 
 ### Notes
 
@@ -672,7 +696,7 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 | Lead Agent       | aidlc-architect-agent                                                        |
 | Support Agents   | aidlc-aws-platform-agent                                                    |
 | Mode             | inline                                                                 |
-| Completion Emoji | :building_construction:                                                |
+| Completion Emoji | :handshake:                                                            |
 
 ### Purpose
 
@@ -765,9 +789,9 @@ Inception フェーズの成果物すべて:
    - 結果を `<record>/verification/phase-check-inception.md` へ書く
 
 6. **Prepare Completion** -- デリバリーとフェーズ境検証の成果物を検証します。フェーズやステージの状態は書きません。承認 report が原子的な Inception → Construction 遷移を持ちます。記録済みのイテレーションの選択は保ちます。対象となる、ソースを生成する新しいソロのユニットのワークフローは unit-major・直列で始まります。明示的なスウォームの選択には、先に stage-major、そのあと `state set-construction-execution swarm` が必要です。承認方式は別の判断です。skeleton-on が適用される場合は、最初の統合ユニットを確認します。チェックポイントが有効な作業では、スキャンから実際のプロジェクト検査を提案し、正確なコマンドと **Approve** / **Request Changes** を添えて **Use this command to verify each completed Unit?** を表示します。コマンドを提示する前に、ハーネスのファイル書き込みツール（Write/edit）で `<record>/verification-command.txt` へ書きます。シェルの `echo` や heredoc は使いません。リポジトリ由来のコマンド文字列をシェルの行へ埋め込んではいけません。承認前に置換が実行されうるからです。`log decision` と `log answer` はどちらも `--checkpoint verification-command --command-file verification-command.txt` を取り、実行中のセッションを自分で見つけます。
-   質問の前に decision を記録し、そのセッションでの人の **Approve** / **Request Changes** の返答を待ちます。answer は同じステージ／チェックポイント／コマンド／セッションで記録します。レシートを許可するのは **Approve** だけです。無関係な返答、**Request Changes**、別セッションの返答は許可になりません。人が選んでいない限り `--details "Approve"` を書いてはいけません。選んだときだけ `state set-construction-verification-command --command-file verification-command.txt` を実行します。**Request Changes** は別のコマンドを提案することを意味します。レシートは状態フィールドより先でなければなりません。汎用の `state set` や自動承認は使いません。このコマンドはすべてのユニット／バッチのチェックポイントで再利用され、変更には新しいレシートが要ります。
+   質問の前に decision を記録し、人の **Approve** / **Request Changes** の返答を待ちます。返答はそのチャットでも、それが最新の質問である間なら新しいチャットでもかまいません。answer は同じステージ／チェックポイント／コマンドで記録します。レシートを許可するのは **Approve** だけです。無関係な返答、**Request Changes**、別の質問への返答は許可になりません。人が選んでいない限り `--details "Approve"` を書いてはいけません。選んだときだけ `state set-construction-verification-command --command-file verification-command.txt` を実行します。**Request Changes** は別のコマンドを提案することを意味します。レシートは状態フィールドより先でなければなりません。汎用の `state set` や自動承認は使いません。このコマンドはすべてのユニット／バッチのチェックポイントで再利用され、変更には新しいレシートが要ります。
    実行できる検査がまだ無い場合（greenfield）、人は延期できます。その場合、最初のチェックポイントが検証の前に尋ねます。[正確な記録コマンド](../../guide/12-cli-commands.md#construction-verification-command-record-human-authorization)を見てください。
-   そのあと、1 セッションか複数チームがユニットを持つかを聞きます。チーム所有は `set-unit-ownership team` を記録し（unit-major と直列が必須）、承認がステージごと（`set-unit-gate-rhythm per-stage`、既定）か、ユニット連鎖のあと一度（`unit-end`）かを聞きます。利用者向けの質問は、フィールド／列挙名を出さずにその選択を説明します。
+   誰がユニットを構築するかは、このステージの質問ではありません。ユニットが 2 つ以上あるとき、エンジンはこのステージの承認後、Construction への最初のステップで一度だけそれを尋ねます（[Construction Execution](../03-orchestrator.md#構築実行) を参照）。
 
 7. **Present Completion & Request Approval** -- :calendar: 絵文字付きで完了メッセージを出します。承認ゲート: Approve（Construction へ進む） / Request Changes。利用者はこのゲートでステージの所属／除外を上書きできます。
 
@@ -840,4 +864,3 @@ Inception フェーズは、Construction と Operation へ持ち越す次の主�
 - **Stage Protocol**: `core/aidlc-common/protocols/stage-protocol.md` -- 承認ゲート、質問形式、完了メッセージ、§13 Learnings Ritual。フェーズ境検証は `stage-protocol-governance.md` §13
 - **Ideation Phase**: `docs/reference/04-stages/ideation.md` -- 前フェーズの文書
 - **Construction Phase**: `docs/reference/04-stages/construction.md` — 条件付きのチェックポイント既定、明示的な実行の選択、保たれる旧来の経路。`bolt-plan.md` は計画であり、実行時ウォークの正本ではない
-- **Deliberate Deviations**: SKILL.md は上流参照からの意図した差を書きます。RE のスコープ／フィンガープリント再実行ガード、aidlc-design-agent サポートの追加、ADR 成果物、Delivery Planning の拡張

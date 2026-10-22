@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-product-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承する（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion を使うことが想定されている |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -73,9 +73,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-product-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-product-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のペルソナ、市場調査、ドメイン用語集、
+チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空の状態で作成します）。既存のペルソナ、市場調査、ドメイン用語集、
 ステークホルダーとのコミュニケーション方針など、プロジェクト固有のプロダクト知識をチームが格納します。
 
 ---

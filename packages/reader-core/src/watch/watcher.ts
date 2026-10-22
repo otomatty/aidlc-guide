@@ -21,11 +21,14 @@ export type Scope = ChangeEvent["scope"];
 
 export const DEFAULT_DEBOUNCE_MS = 300;
 const DEFAULT_MAX_RESUBSCRIBES = 3;
-// Keep this boundary aligned with review-freshness.ts's single-repository walk.
+// Keep this boundary aligned with review-freshness.ts's single-repository walk
+// (its unconditional names; v2.11.1 adds .codegraph, .idea and DerivedData).
 const EXCLUDED_DIRECTORIES = new Set([
   ".cache",
+  ".codegraph",
   ".git",
   ".gradle",
+  ".idea",
   ".mypy_cache",
   ".next",
   ".nuxt",
@@ -34,6 +37,7 @@ const EXCLUDED_DIRECTORIES = new Set([
   ".tox",
   ".venv",
   ".vs",
+  "DerivedData",
   "__pycache__",
   "node_modules",
   "venv",

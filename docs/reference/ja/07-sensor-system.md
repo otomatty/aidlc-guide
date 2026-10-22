@@ -29,7 +29,7 @@ dist/claude/.claude/sensors/aidlc-<id>.md
 | `aidlc-required-sections.md` | `required-sections` |
 | `aidlc-linter.md` | `linter` |
 
-ファイル名↔id 規則は `tests/unit/t86-sensor-manifest-schema.sh` が強制します。`aidlc-` 接頭辞は **カスタムの利用者が提供するものも含め、どのセンサーにも必須** です。コンパイルリゾルバは `SENSOR_FILE_REGEX = /^aidlc-([a-z][a-z0-9-]*)\.md$/`（`aidlc-graph.ts` の `loadSensors`）でマニフェストを発見するので、接頭辞が無いファイルは黙って飛ばされ、ステージに決して結びません。カスタムセンサーは `aidlc-<id>.md` と名付け、`id: <id>` をセットします。
+ファイル名と id の規則は `tests/unit/t86-sensor-manifest-schema.test.ts` が強制します。`aidlc-` 接頭辞は **カスタムの利用者が提供するものも含め、どのセンサーにも必須** です。コンパイルリゾルバは `SENSOR_FILE_REGEX = /^aidlc-([a-z][a-z0-9-]*)\.md$/`（`aidlc-graph.ts` の `loadSensors`）でマニフェストを発見するので、接頭辞が無いファイルは黙って飛ばされ、ステージに決して結びません。カスタムセンサーは `aidlc-<id>.md` と名付け、`id: <id>` をセットします。
 
 ---
 
@@ -37,37 +37,62 @@ dist/claude/.claude/sensors/aidlc-<id>.md
 
 どのマニフェストも YAML frontmatter と本文付きの Markdown です。frontmatter は構造契約 — 純粋な能力記述子 — で、本文は検査を説明する文章です。マニフェストは *センサーが何か* を言い、どのステージが使うかは言いません。関係はステージ側にあり、ステージの frontmatter `sensors:` フィールド経由です（後述の [ステージがセンサーを取り込む仕方](#ステージがセンサーを取り込む仕方)）。
 
-```yaml
+同梱の `required-sections` マニフェストです（ネイティブインストールにあるとおり）。
+
+```markdown
 ---
-id: required-sections                       # required
-kind: deterministic                          # required
-command: aidlc engine sensor-required-sections   # required
-default_severity: advisory                   # required
-fire_on: gate                               # optional; write (default) | gate
-description: Checks that stage output ...    # required
-category: document-shape                     # optional
-matches: "**/{aidlc-docs,intents,codekb}/**"           # optional capability filter
-input_schema:                                # optional
+id: required-sections
+kind: deterministic
+command: aidlc engine sensor-required-sections
+default_severity: advisory
+fire_on: gate
+description: Checks at the gate that stage output contains the required H2 headings
+category: document-shape
+matches: "**/{aidlc-docs,intents,codekb}/**"
+input_schema:
   output_path: string
   stage_slug: string
-output_schema:                               # optional
+output_schema:
   pass: boolean
-  missing_headings: string[]
-timeout_seconds: 300                         # optional
+  h2_count: integer
+  headings: string[]
+  findings_count: integer
+  edge_block: string
+  template: string
+  template_expected: string[]
+  template_missing: string[]
+  config_warning: string
+timeout_seconds: 300
 ---
 
 # required-sections sensor
 
-<body — prose documenting default mode, override mode, failure mode>
+Default mode: checks the output contains at least 2 H2 headings (generic
+content-shape sanity check).
+```
+
+フィールドの行にコメントを書かないでください。パーサはトップレベルのフィールドの値のあとにある `# ...` を値の一部として読むので、`id: demo-check   # required` は id を `demo-check   # required` にしてしまい、マニフェストの読み込みが失敗します。エンジンはマニフェストをどう読むかを表示できます。次は同梱の `linter` です。
+
+```text
+$ aidlc engine sensor describe linter
+id: linter
+kind: deterministic
+command: aidlc engine sensor-linter
+default_severity: advisory
+description: Wraps the project's configured linter (eslint by default for v0.5.0); fires on TS/JS code outputs
+category: code-quality
+matches: **/*.{ts,js}
+timeout_seconds: 1200
+path: .claude/sensors/aidlc-linter.md
 ```
 
 | フィールド | 必須 | 型 | 注 |
 |---|---|---|---|
-| `id` | ✓ | kebab-case 文字列 | `aidlc-` 接頭辞を外したファイル名ステム。ルールファイルの `pairing:` フィールドから相互参照（[Rule System](08-rule-system.md)） |
-| `kind` | ✓ | enum | 現在受け入れるのは `deterministic` のみ。`llm` は v0.11.0 LLM ディスパッチ章向けに予約。[`kind` enum](#kind-enum) |
-| `command` | ✓ | 文字列 | 正準起動接頭辞。同梱センサーは `aidlc engine sensor-required-sections` のようなネイティブ委譲を使う。サードパーティセンサーは別の実行時を宣言してよい。センサーディスパッチャは `--stage <slug>` に加え、`input_schema` が選ぶパスフラグを足す。`file_path` を宣言していれば `--file-path <path>`、そうでなければ `--output-path <path>`。[`command:` 起動契約](#command-起動契約) |
-| `default_severity` | ✓ | enum | `advisory` または `blocking`。blocking の強制は `fire_on: gate`。write 発火の blocking 宣言はこのリリースでは advisory のまま |
-| `description` | ✓ | 文字列 | 人間向けの 1 行の説明 |
+| `id` | はい | kebab-case 文字列 | `aidlc-` 接頭辞を外したファイル名ステム。ルールファイルの `pairing:` フィールドから相互参照（[Rule System](08-rule-system.md)） |
+| `kind` | はい | enum | 現在受け入れるのは `deterministic` のみ。それ以外の値はパース時に拒まれる。[`kind` enum](#kind-enum) |
+| `command` | はい | 文字列 | 正準起動接頭辞。同梱センサーは `aidlc engine sensor-required-sections` のようなネイティブ委譲を使う。カスタムセンサーは `bun .claude/tools/aidlc-sensor-<id>.ts` のように自分の TypeScript ワーカーを指名する。ディスパッチャは `.ts` のファイル名（または `sensor-<id>` 委譲）を取り、インストール済みの tools フォルダからそのファイルを実行する。ネイティブインストールでは、ファイル名は `aidlc-sensor-<id>.ts` で、`export function main(argv)` しなければならない。センサーディスパッチャは `--stage <slug>` に加え、`input_schema` が選ぶパスフラグを足す。`file_path` を宣言していれば `--file-path <path>`、そうでなければ `--output-path <path>`。[`command:` 起動契約](#command-起動契約) |
+| `default_severity` | はい | enum | `advisory` または `blocking`。blocking の強制は `fire_on: gate`。write 発火の blocking 宣言はこのリリースでは advisory のまま |
+| `description` | はい | 文字列 | 人間向けの 1 行の説明 |
 | `category` | 任意 | 文字列 | 自由形式の説明ラベル（同梱マニフェストは `document-provenance`、`document-shape`、`code-quality` を使う。閉じた enum ではない） |
 | `fire_on` | 任意 | enum | `write` または `gate`。既定は `write` |
 | `matches` | 任意 | glob 文字列 | ディスパッチ時に消費する能力フィルタ。[`matches` filter](#matches-フィルタ) |
@@ -81,9 +106,9 @@ timeout_seconds: 300                         # optional
 
 `kind` フィールドはディスパッチ仕組みを宣言します。スキーマが現在受け付ける値は 1 つだけです。
 
-- `deterministic` — マニフェストの `command:` は自己完結のシェル起動で、終了 0（通過）/ 非ゼロ（失敗）し、既知パスへ構造化した詳細を書く。
+- `deterministic` - ディスパッチャは発火ごとのフラグを付けてマニフェストのワーカーを実行する。ワーカーは真偽値の `pass`（加えて `findings` と、監査行が記録する数である `findings_count`）を持つ JSON を stdout に 1 行印字し、検査の合否にかかわらず終了 0 する。失敗の詳細ファイルはディスパッチャが書く。終了 127 は `tool-unavailable` 注付きの合格として記録される。それ以外の非ゼロ終了、または真偽値の `pass` が無い出力は、`script-error` 注付きの合格として記録される（blocking のゲート結びがそれをどう扱うかは [`default_severity`](#default_severity) を参照）。
 
-`llm` は **LLM ディスパッチ章向けに予約**（v0.11.0+）。その章が提供されるまで、消費者はパース時に `kind: llm` を落とさなければなりません。予約は書き込み時に強制されます。現在 `kind: llm` マニフェストを提供するのは、パーサが落とすマニフェスト著者エラーです。
+`llm` を含め、ほかの `kind` はパース時に拒まれます（「other kinds reserved for future releases」）。
 
 `kind` の未知の値（`deterministic` 以外）はパース時に落とされます。前方互換は *未知キー* に効きます（[Forward-compat policy](#前方互換方針)）。既知キーの未知値には効きません。
 
@@ -120,7 +145,7 @@ outputs: ...
 4. `fire_on`、`default_severity`、`category`、`matches` を解決した `sensors_applicable[]` 項目へコピーする。
 5. ステージごとの解決配列を正準 `data/stage-graph.json` へ出す（FIELD_ORDER ピン: `rules_in_context` のあと）。
 
-実行時の PostToolUse フック、`gate-start`、`revise` はグラフノードから `sensors_applicable` を読みます。どれもマニフェストを開き直しません。ディスパッチフィールドはコンパイル時スナップショットです。ワークフロー中のマニフェスト編集は、実行中のワークフローが発火するものを変えません（BGP 安定性 — [Plane Architecture](02-plane-architecture.md)）。
+実行時の PostToolUse フック、`gate-start`、`revise` は、何が発火するかを決めるためにグラフノードから `sensors_applicable` を読みます。どれもそのためにマニフェストを開き直しません。ディスパッチャが発火のたびにマニフェストを読み直すのは、`command`、`input_schema`、`timeout_seconds` と、パスに対する自身の `matches` の再検査のためだけです。グラフがコピーしたもの（`fire_on`、`default_severity`、`category`、フックの `matches` フィルタ）と新しい取り込みは、次のコンパイルを待ちます。ネイティブインストールでは、同梱の 6 つのセンサーは id で同梱ワーカーを実行するので、その `command` を編集しても何も変わりません。センサーを編集したら必ず再コンパイルしてください。
 
 ### ステージごとのセンサーマトリクス（フレームワーク33 ステージ）
 
@@ -154,9 +179,9 @@ outputs: ...
 | `aidlc-linter.md` | `**/*.{ts,js}` |
 | `aidlc-type-check.md` | `**/*.{ts,tsx}` |
 
-`fire_on: write` では、`matches` は発火フィルタです。フックは書かれているパスを glob と比べ、glob が無い項目は決して発火しません。`fire_on: gate` では、`gate-start` と `revise` が存在する宣言済み成果物を全部列挙し、各センサーの `matches` 能力の外のパスを飛ばし、一致するパスだけをディスパッチします。省略した glob はどの成果物も受け入れます。同梱 6 つはどれも glob を宣言します。コンパイルリゾルバはそれを `sensors_applicable[]` へコピーします。
+`fire_on: write` では、`matches` は発火フィルタです。フックは書かれているパスを glob と比べ、glob が無い項目は決して発火しません。`fire_on: gate` では、`gate-start` と `revise` が存在する宣言済み成果物を全部列挙し、各センサーの `matches` 能力の外のパスを飛ばし、一致するパスだけをディスパッチします。省略した glob はどの成果物も受け入れます。ステージの出力全体を読む `upstream-coverage` と `claim-sources` は、出力フォルダごとに一度、質問ファイルでもタイムスタンプファイルでもない最初の成果物でディスパッチします。Construction の自律モードでエンジンが自ら承認するゲートは、blocking のセンサーだけをディスパッチします（そこには advisory の証跡を読む人がいないため）。同梱 6 つはどれも glob を宣言します。コンパイルリゾルバはそれを `sensors_applicable[]` へコピーします。
 
-空文字列（`matches: ""`）はパース時に落とされます。write 発火のセンサーは glob を宣言すべきです。gate 発火のセンサーは、宣言済み成果物全部を分析するために省略してよいです。
+空文字列（`matches: ""`）はパース時に捨てられるので、glob を省略したのと同じに働きます。write 発火のセンサーは glob を宣言すべきです。gate 発火のセンサーは、宣言済み成果物全部を分析するために省略してよいです。
 
 ### ルールとセンサーの相互参照
 
@@ -166,7 +191,7 @@ outputs: ...
 
 ## `default_severity`
 
-`advisory` の結果は監査行を出しますが、ステージゲートを止めません。`blocking` のゲートに結び付いたセンサーは、検証済みの合格でのみ進みます。報告された所見、ディスパッチャの終了 / 起動 / タイムアウト失敗、壊れたまたは不一致の判定、`SENSOR_BUDGET_OVERRIDE`、`tool-unavailable` または `script-error` を運ぶ `SENSOR_PASSED` 行は、ゲートが開く前に `gate-start`、`revise`、または承認時の回復した改訂再入場を止めます。
+`advisory` の結果は監査行を出しますが、ステージゲートを止めません。ゲートが開くか再表示されるとき、オーケストレータの応答は、その `narration` の中で、ステージが作ったものの後の行に、宣言済み出力での最新の結果が失敗である検査ごとに 1 文を運びます（`aidlc-state.ts` の `failedCheckNotices`。最大 3 文と件数）。エージェントはそれを承認の質問とともにその人へ伝えます。変更の行は、変わったものを示すままです。注付きで記録された合格（ツール利用不可、スクリプトエラー）は何も評価しておらず、以前の失敗を消しません。Unit 自身のゲートは、その Unit の出力だけを名指しします。センサーがオフのときは何も言われません。`blocking` のゲートに結び付いたセンサーは、検証済みの合格でのみ進みます。報告された所見、ディスパッチャの終了 / 起動 / タイムアウト失敗、壊れたまたは不一致の判定、`SENSOR_BUDGET_OVERRIDE`、`tool-unavailable` または `script-error` を運ぶ `SENSOR_PASSED` 行は、ゲートが開く前に `gate-start`、`revise`、または承認時の回復した改訂再入場を止めます。
 
 運用者は所見を直して再試行するか、別の明示オーバーライド判断ができます。コンダクターは `Fix findings,Override blocking sensors` を出す `DECISION_RECORDED` を記録し、新しい人のターンを待ち、正確な `QUESTION_ANSWERED` を記録し、それから `--override-blocking-sensors --user-input "Override blocking sensors"` でゲート報告を再試行します。裸のフラグ、出していない / 言い換えた選択、人間の応答に裏付けられたレシートが無いこと、自律モードは拒まれます。成功したオーバーライドはセンサー id、任意の詳細パス、評価理由を `STAGE_AWAITING_APPROVAL` に記録します。すでに開いたゲートの再検証は `Revalidated: true` の新しい行を出し、認可レシートを再利用可能のまま残さず消費します。このリリースでは、write 発火のセンサーは `blocking` を宣言できますが、PostToolUse ディスパッチは advisory のままです。
 
@@ -174,7 +199,7 @@ outputs: ...
 
 ## `fire_on`
 
-`write` が既定で、増分の PostToolUse フィードバックを保ちます。`gate` は、`gate-start` が最初のゲートを開く直前、改訂仕事のあと `revise` がゲートに再入場する前、承認時の改訂バックストップが回復した再入場をする前に、存在する宣言済み成果物ごとに一度発火します。ディスパッチは状態トランザクションの外です。`aidlc-sensor.ts fire` が `SENSOR_FIRED` と終端行の両方の周りで監査ロックを取るからです。blocking ディスパッチは評価前に一致する各成果物をフィンガープリントし、各センサーのあとそれを検査し、状態トランザクション内でもう一度検査します。変わったバイトはゲート入場を拒み、再試行で評価しなければなりません。
+`write` が既定で、増分の PostToolUse フィードバックを保ちます。`gate` は、`gate-start` が最初のゲートを開く直前、改訂仕事のあと `revise` がゲートに再入場する前、承認時の改訂バックストップが回復した再入場をする前に、存在する宣言済み成果物ごとに一度（`upstream-coverage` と `claim-sources` は出力フォルダごとに一度）発火します。誰もゲートに答えないとき（Construction の自律モードでエンジンが自ら承認するとき）は、blocking のセンサーだけが発火します。そこには advisory の証跡を読む人がいないためです。ディスパッチは状態トランザクションの外です。`aidlc-sensor.ts fire` が `SENSOR_FIRED` と終端行の両方の周りで監査ロックを取るからです。blocking ディスパッチは評価前に一致する各成果物をフィンガープリントし、各センサーのあとそれを検査し、状態トランザクション内でもう一度検査します。変わったバイトはゲート入場を拒み、再試行で評価しなければなりません。
 
 ディスパッチャは終端行のあとコンパクトな JSON 判定を 1 つ印字します。`fire_id`、`sensor_id`、`stage`、`output_path`、`result`、`detail_path`、任意の `note`。ゲート強制は判定の識別情報を検証し、注無しの `passed` 結果以外を、blocking 結びの不合格として扱います。明示の `--artifacts` パスと発見した成果物は正準に解決され、ステージの正準 produce ディレクトリ内に残らなければなりません。絶対パス、走査、シンボリックリンク脱出はセンサーをリダイレクトできません。
 
@@ -204,12 +229,26 @@ input_schema:
 command: aidlc engine sensor-required-sections
 ```
 
-が `requirements-analysis` に対して、インテントのレコードディレクトリ内の要件成果物を書いているときにディスパッチされると:
+は、少なくとも `--stage <slug> --output-path <file>` を足してディスパッチされます（加えて、`required-sections` が id によって受け取るテンプレートのフラグ）。H2 見出しが 1 つだけのインテントステートメントに対して手で発火すると:
 
+```text
+$ aidlc engine sensor fire required-sections --stage intent-capture --output-path aidlc/spaces/default/intents/261013-tagged-notes/ideation/intent-capture/intent-statement.md
+{"fire_id":"f00255f3","sensor_id":"required-sections","stage":"intent-capture","output_path":"aidlc/spaces/default/intents/261013-tagged-notes/ideation/intent-capture/intent-statement.md","result":"failed","detail_path":"aidlc/spaces/default/intents/261013-tagged-notes/.aidlc-engine/sensors/intent-capture/required-sections-f00255f3.md"}
 ```
-aidlc engine sensor-required-sections \
-  --stage requirements-analysis \
-  --output-path aidlc/spaces/default/intents/260624-inventory-api/inception/requirements-analysis/requirements.md
+
+詳細ファイルの所見です（その JSON ブロックを、フェンスを外して示しています）。
+
+```text
+## Findings
+
+{
+  "pass": false,
+  "h2_count": 1,
+  "headings": [
+    "## Problem Statement"
+  ],
+  "findings_count": 1
+}
 ```
 
 マニフェストは発火ごとのフラグを符号化しません。ディスパッチャが足します。マニフェストは純粋な能力記述子のままです。
@@ -223,7 +262,7 @@ aidlc engine sensor-required-sections \
 1. **`surface`（stdout）。** `aidlc engine learnings surface --slug <stage-slug>` はステージの `memory.md` を読み、構造化した JSON を印字します。`candidates[]`（空でない Interpretation / Deviation / Tradeoff 項目ごとに 1 つ。それぞれ `id`、`source_heading`、`ts`、`summary`、`context`、`default_scope: "project"` を運ぶ）と、読み取り専用の `parked_open_questions[]`。AskUserQuestion フィールド名は無し。純粋な領域データ。Open questions は決して候補になりません（調査項目です）。
 2. **コンダクターが AskUserQuestion を描く（ナレッジ）。** 候補ごとに選択肢 1 つ（ラベル = 候補 `summary` そのまま。説明 = 導出した行き先、例: `→ memory/project.md (Deviation)` とチームへ昇格する手段）。`multiSelect` のあと、コンダクターは残した各ラベルを候補 `id` + `source_heading` へ戻して対応付けます。それからいつも「次回のために足すことは？」と聞きます。自由文は見出し選び AUQ を 1 つ得ます（Interpretation / Deviation / Tradeoff / Open question）。見出し選びが利用者の唯一の分類で、行き先はそこから導きます。
 3. **入場衝突検査（ナレッジ → オーケストレータ LLM。どの選択が persist に届くかをゲート）。** 残した各学びについて、コンダクターは提案した日付付き項目 1 つを `org.md` の一致する `## <section>` と比べます（§5 入場ゲートの一行変種）。矛盾があると、コンダクターは衝突する org の文をインラインで提示し、利用者は直す / 飛ばす / エスカレートします（判断 → 利用者。利用者上書きの道は無し）。衝突が無い、または利用者がエスカレートした選択だけが進みます。センサーマニフェストに org 見出しの類似は無く、検査を飛ばします。
-4. **`persist`（selections-file in）。** コンダクターは残した選択を `<record>/.aidlc-engine/learnings/<slug>-selections.json`（インテントのレコードディレクトリ内）（gitignore）へ書き、`aidlc engine learnings persist --slug <slug> --selections-json <path>` を呼びます。ツールは決定論のライターです。衝突を判断しません。各学びをプラクティスとして `aidlc/spaces/<surface-time-space>/memory/{project,team}.md` へ経路し、センサー選択については2 ファイルへの書き込み（マニフェスト + 元ステージの `sensors:` frontmatter）を 1 つの `withAuditLock` 内で行い、それから `RULE_LEARNED` / `SENSOR_PROPOSED` を出します。
+4. **`persist`（selections-file in）。** コンダクターは残した選択を、`surface` が返す `selections_file` のパス、つまり `<record>/.aidlc-engine/learnings/<slug>-selections.json`、インテントのレコードが無ければ `aidlc/spaces/<space>/intents/.aidlc-engine/learnings/<slug>-selections.json`（どちらも gitignore）へ書き、`aidlc engine learnings persist --slug <slug> --selections-json <selections_file>` を呼びます。ツールは決定論のライターです。衝突を判断せず、読むのはそのファイルだけです（ほかの場所にある selections-file や、リンク経由でたどり着いたものは拒むので、1 つのプロジェクトの 2 つのチャットが互いの選択を保存することはありません）。各学びをプラクティスとして `aidlc/spaces/<surface-time-space>/memory/{project,team}.md` へ経路し、センサー選択については2 ファイルへの書き込み（マニフェスト + 元ステージの `sensors:` frontmatter）を 1 つの `withAuditLock` 内で行い、それから `RULE_LEARNED` / `SENSOR_PROPOSED` を出します。
 
 selections-file は再実行の成果物です。落ちた persist は人に再プロンプトせず同じ JSON を再実行します（書いた行ごとの `<!-- cid:<intent-slug>:<slug>:<content-hash> -->` マーカー経由の内容存在冪等 — 位置候補 id ではなく、学び自身のテキストの完全 SHA-256 ハッシュ）。selections-file は候補が提示されたときに一度結んだ `space` / `intent` も運びます。`persist` はそれらを使い、現在のアクティブインテントカーソル自身を再解決しません。書く前に、このスペースと非 null のインテントレコードがまだ存在すること、要求した slug が提示されたときの `stage_slug` と一致することを検証します。
 
@@ -231,21 +270,15 @@ selections-file は再実行の成果物です。落ちた persist は人に再�
 
 ## 新規作成するマニフェストの既定
 
-センサー提案がゲートで確認されると、ゲート儀式ツールは新しい **プロジェクト層** マニフェストを `<project>/.claude/sensors/aidlc-<id>.md` に作成します。同梱のフレームワーク配布には決してしません（プロジェクトごとのラーニングループがフレームワークを変えてはいけない。フレームワーク配布パスは落とされる）。フィールドの既定:
+センサー提案がゲートで確認されると、ゲート儀式ツールは新しい **プロジェクト層** マニフェストを `<project>/.claude/sensors/aidlc-<id>.md` に作成します。同梱のフレームワーク配布には決してしません（プロジェクトごとのラーニングループがフレームワークを変えてはいけない。フレームワーク配布パスは落とされる）。フィールドは選択が与え、ツールはそれを与えられたとおりに書きます。
 
-| フィールド | 既定 | 注 |
+| フィールド | 書かれ方 | 注 |
 |---|---|---|
-| `id` | 利用者の自由文から導く（kebab-case にする） | |
-| `kind` | `deterministic` | 現在唯一受け入れる値 |
-| `command` | `bun ./plugins/acme/aidlc-sensor-<id>.ts` | サードパーティの Bun 裏付け例。プラグインはその実行時要件を宣言しなければならない |
-| `default_severity` | `advisory` | 非ブロッキング既定 |
-| `fire_on` | `write` | 増分の write ディスパッチ |
-| `description` | 利用者の自由文から | |
-| `category` | `""` | 利用者が欲しければ埋める |
-| `matches` | 書き込みパス glob | 足場はセンサーが適用する glob 形を促す（成果物木 glob または `**/*.ts` のようなコード glob）。`matches` が無い write 発火項目は決して発火しない |
-| `input_schema` | `{ output_path: string, stage_slug: string }` | ディスパッチャが足すフラグに一致 |
-| `output_schema` | `{ pass: boolean }` | ディスパッチャが頼る最小構造 |
-| `timeout_seconds` | 指定しなければ省略 | ディスパッチャのフォールバックは `1200` 秒。マニフェストに明示した値が優先される |
+| `id`、`kind`、`command`、`default_severity`、`description`、`matches` | 選択の文字列 | 6 つすべてが必須。1 つでも欠けた選択は `persist` が拒む。マニフェストはスキーマにも合格しなければならない。`kind: deterministic` で、`command` は tools フォルダのワーカーを指名する。ネイティブインストールでは `bun .claude/tools/aidlc-sensor-<id>.ts` という名前 |
+| `category` | 選択にあれば書かれる | |
+| `timeout_seconds` | 指定されれば書かれる | ディスパッチャのフォールバックは `1200` 秒 |
+| `fire_on` | 書かれない | そのため足場で作ったセンサーは write 発火（既定）になる |
+| `input_schema`、`output_schema` | 書かれない | `input_schema` のキーが無いので、カスタムセンサーは `--output-path` を受け取る |
 
 マニフェストを作成したあと、ゲート儀式ツールは — 同じ `withAuditLock` トランザクション内で — 新しい id を元ステージの `sensors:` frontmatter 一覧に足します（ステージ側からの取り込みの2 ファイルへの書き込み）。センサーは次のワークフローがコンパイルするとき完全に結ばれます。これが許される唯一のステージ frontmatter 編集です。取り込み一覧を伸ばします（形は不変、中身は不変ではない）。`## Steps` / `## Sensors` / `## Learn` 本文は決して直しません。
 
@@ -269,10 +302,8 @@ write フックは、各ディスパッチャのサブプロセスに既定で 3
 
 センサー能力のいくつかはスキーマに予約されていますが、まだアクティブではありません。着地するときフィールド形が安定するようにです。
 
-- **`kind: llm` ディスパッチ** — LLM 評価センサー（v0.11.0）。スキーマは現在 `kind` を受け入れますが、パース時に `deterministic` 以外を落とします。
-- **書き込み時 blocking** — write 発火マニフェストで `blocking` は受け入れますが、このリリースで強制されるのは gate 発火の失敗だけです。
-
-どちらも書き込み時に強制されます。いまそれらを使うマニフェストを提供するのは、パーサが落とす著者エラーです。
+- **`kind: llm` ディスパッチ** - LLM 評価センサー。スキーマはパース時に `deterministic` 以外の `kind` を落とします。
+- **書き込み時 blocking** - write 発火マニフェストで `blocking` は受け入れますが、このリリースで強制されるのは gate 発火の失敗だけです。パーサはこの組み合わせを落としません。
 
 ## 次
 
@@ -280,4 +311,4 @@ write フックは、各ディスパッチャのサブプロセスに既定で 3
 - **利用者が見るラーニングループ** — センサー提案がゲートでどう提示され確認されるか、確認した提案が新しいマニフェストをどう足場にするか。User Guide の [Rules and the Learning Loop](../guide/09-rules-and-the-learning-loop.md)。
 - **コンパイル境界** — `sensors_applicable` がワークフロー開始時に一度解決され、発火時にグラフノードから読み取られる仕組み。[Plane Architecture](02-plane-architecture.md)。
 
-上のスキーマと `dist/claude/.claude/sensors/` の同梱の 5 つのマニフェストが動く例です。
+上のスキーマと `dist/claude/.claude/sensors/` の同梱の 6 つのマニフェストが動く例です。

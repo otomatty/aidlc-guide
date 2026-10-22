@@ -17,6 +17,7 @@ AI-DLC の各ワークフローは、**インテント記録ディレクトリ**
 ```
 aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
   aidlc-state.md                    # Workflow state (commit)
+  project-description.json          # Your first request, exactly as given (commit)
   audit/                            # Audit trail — per-clone shards (commit)
     <host>-<clone>.md               # this clone's shard; readers glob + merge by timestamp
   .aidlc-engine/                    # エンジン内部状態（gitignore）
@@ -42,16 +43,11 @@ aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
   runtime-graph.json                # Execution telemetry view (gitignore)
 
   verification/                     # Phase boundary checks (commit)
-    phase-check-initialization.md
-    phase-check-ideation.md
-    phase-check-inception.md
-    phase-check-construction.md
-    phase-check-operation.md
+    phase-check-ideation.md         # written by Approval and Handoff
+    phase-check-inception.md        # written by Delivery Planning
+    phase-check-construction.md     # written by CI Pipeline
 
-  initialization/                   # Phase 0 artifacts
-    workspace-scaffold/scaffold-report.md
-    workspace-detection/workspace-findings.md
-    state-init/state-init-summary.md
+  initialization/                   # Phase 0: stays empty (state and audit only)
 
   ideation/                         # Phase 1 artifacts
     intent-capture/
@@ -93,6 +89,32 @@ aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
 
   archive/                          (created on-demand)
     {ISO-date}-{stage-name}/
+```
+
+ステージフォルダの中には、そのステージの成果物、質問ファイル、Learnings が on のときの `memory.md` 日誌、そして `reviews/review-NN.md` があります。`reviews/review-NN.md` はそのステージの各レビューの読みやすいコピーで、判定が出た順に番号が付きます。`mvp` 計画で意図の取り込みを終え、実現可能性評価を始めた時点で、ある記録は次のとおりでした（取得したもので、`.aidlc-engine/` は省いています）。
+
+```text
+aidlc/spaces/default/intents/261013-inventory-api/
+  aidlc-state.md
+  project-description.json
+  runtime-graph.json
+  audit/
+    <host>-<clone>.md
+  construction/
+  ideation/
+    feasibility/
+      feasibility-questions.md
+      memory.md
+    intent-capture/
+      intent-capture-questions.md
+      intent-statement.md
+      memory.md
+      reviews/
+        review-01.md
+      stakeholder-map.md
+  inception/
+  initialization/
+  verification/
 ```
 
 **リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。プロジェクトフォルダ自体がリポジトリの場合、`<repo>` はフォルダ名（リンクされた git worktree ではメインチェックアウトの名前）から始まり、そのままストアに残ります。プロジェクトフォルダを移動・改名・コピーしても同じストアを読み続けます。例外は、どのインテントも自分のリポジトリとして記録していないストアが 2 つ以上あるスペースです。その場合は現在のフォルダ名を使い、次のステップで完了済みステージの結果がずれていると警告することがあります。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全な再スキャンがこれら 9 ファイルを置き換えます。焦点スキャンの場合は、新たに解析した領域を 9 ファイルへマージし、その領域の外にある従来の記述は保持します。検証済みで最新のカバレッジは和集合として累積し、古い・検証できない従来の深いカバレッジは記述としては残したうえで浅い扱いへ降格します（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。スキャン前のソース／ストア世代と、全成果物をロックしたうえでの公開により、ソースの変更が最新と誤ってラベル付けされることも、同時に走った焦点スキャンが互いを静かに上書きすることも防ぎます。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。日誌が有効な場合に記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（エンジンが run-stage ディレクティブを発行するときに作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
@@ -138,11 +160,13 @@ flowchart LR
 
 ### 初期化（ステージ 0.1〜0.3）
 
-| ステージ | 成果物 | 補足 |
+| ステージ | 残すもの | 補足 |
 |-------|-----------|-------|
-| 0.1 ワークスペース足場作成 | `scaffold-report.md` | 決定論的（`aidlc-utility intent-create` 内で実行） |
-| 0.2 ワークスペース検出 | `workspace-findings.md`、`aidlc-state.md` の更新 | 決定論的なルールベース走査 |
-| 0.3 状態初期化 | `state-init-summary.md` | 決定論的 |
+| 0.1 ワークスペース足場作成 | 記録ディレクトリ（計画が実行するフェーズごとに 1 つのフォルダと `verification/`）、およびスペースの `knowledge/` | 決定論的（`aidlc-utility intent-create` 内で実行） |
+| 0.2 ワークスペース検出 | `aidlc-state.md` の `Project Type` と `Workspace State` の根拠となる走査、および `WORKSPACE_SCANNED` 監査行 | 決定論的なルールベース走査 |
+| 0.3 状態初期化 | 完全な `aidlc-state.md` | 決定論的 |
+
+3 つのどれも独自の文書を書かないため、`initialization/` は空のままです。
 
 歓迎メッセージは `settings.json` の `companyAnnouncements` 経由でセッション開始時に表示されます。ステージではなく、成果物も生成しません。
 
@@ -169,7 +193,7 @@ flowchart LR
 | 2.5 詳細モックアップ | `mockups.md`、`interaction-spec.md`、`accessibility-checklist.md` | UI プロジェクト |
 | 2.6 ドメイン設計 | `components.md`（統合されたコンポーネントカタログ）、`decisions.md`（ADR ログ） | 新規コンポーネントが必要なとき |
 | 2.7 作業ユニット生成 | `unit-of-work.md`、`unit-of-work-dependency.md`、`unit-of-work-story-map.md` | 常に実行 |
-| 2.8 契約設計 | `contract-summary.md`（ユニット間の契約） | 複数ユニットのシステム |
+| 2.8 契約設計 | `contract-summary.md`（ユニット間の契約と、公開 API または外部 API） | 複数ユニット、またはシステム外から使われる API を持つユニット |
 | 2.9 デリバリー計画 | `bolt-plan.md`、`team-allocation.md`、`risk-and-sequencing-rationale.md`、`external-dependency-map.md` | 常に実行 |
 
 ### 構築（ステージ 3.1〜3.7）
@@ -206,23 +230,23 @@ flowchart LR
 
 ## 質問ファイル
 
-利用者の入力を集める各ステージは、同じ場所に `{stage-name}-questions.md` という質問ファイルを生成します。質問は文字付き選択肢（A〜E）と必須の `X. Other (please specify)` を使い、回答記録には `[Answer]:` タグを使います。
+利用者の入力を集める各ステージは、同じ場所に `{stage-name}-questions.md` という質問ファイルを生成します。質問は文字付き選択肢（A〜E）と必須の `X. Other (please specify)` を使い、回答記録には `[Answer]:` タグを使います。エージェントが作成するファイルでは、通常の質問の見出しに、ふだんそれに答える人が示されます（`## Q3. [Developer] ...`）。各人の質問は、別の人の回答を待つ必要がない限りまとめて置かれます。あとから追加された質問は末尾に置かれます。確認、変更依頼、承認のセクションにはラベルが付きません。既存のファイルは質問をそのまま保ちます。ただし、ステージを最初からやり直すよう求めた場合は、新しいファイルに置き換わります。
 
 各ステージでは、回答方法を選べます。
 
 | モード | 仕組み |
 |------|-------------|
-| **対話形式（Guide Me）** | 対話しながら最大 4 問ずつ進める |
-| **ファイル編集（I'll Edit the File）** | 質問ファイルを直接編集し、終わったら "done" と伝える |
+| **対話形式（Guide me）** | エージェントがここで質問をまとめて尋ねる（Claude Code では一度に最大 4 問を表示） |
+| **ファイル編集（I'll edit the file）** | 質問ファイルを直接編集し、終わったことをエージェントに伝える |
 | **チャット（Chat）** | 自由形式で会話する。決定事項は抽出されてファイルへ書き込まれる |
 
-ステージの途中で方式を切り替えることもできます。質問ファイルが常に正本です。
+以後のステージは選んだ方式を引き継ぎ、ステージの途中で切り替えることもできます。質問ファイルが常に正本です。[対話モード](07-interaction-modes.md) を参照してください。
 
 ---
 
 ## コミットするものと Gitignore に入れるもの
 
-配布済みの `.gitignore` にはこの分割が定義されています（設計方針 §5.1）。共有する方法論、レジストリ、状態、監査情報、成果物はコミットし、利用者ごとのセッション位置や端末固有の派生状態は Git 管理外にします。
+配布済みの `.gitignore` にはこの分割が定義されています。共有する方法論、レジストリ、状態、監査情報、成果物はコミットし、利用者ごとのセッション位置、自分の設定、端末固有の派生状態は Git 管理外にします。
 
 | コミットする | Gitignore に入れる |
 |--------|-----------|
@@ -230,8 +254,11 @@ flowchart LR
 | `audit/*.md`（クローンごとのシャード） | `.aidlc-engine/recovery.md` とその他の `intents/*/.aidlc-*`（一時的な復旧用目印） |
 | すべてのステージ成果物 | `runtime-graph.json`（監査シャードから再生成できる） |
 | `verification/` のフェーズ検査結果 | `aidlc/.aidlc-clone-id`（このクローンのシャード名を決めるため、端末固有である必要がある） |
-| スペース単位の `aidlc/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（セッションごとの UUID スタンプ、ワークフローの紐付け、PID 系譜の対応表） |
+| スペース単位の `aidlc/spaces/<space>/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（セッションごとの UUID スタンプ、ワークフローの紐付け、PID 系譜の対応表） |
 | ステージごとの `memory.md` 日誌、スペースの `memory/` 層 | `.aidlc-engine/hooks-health/`、`.aidlc-engine/sensors/`（生存確認、助言用の指摘） |
+| レビューされた各ステージの `reviews/` コピー | `.claude/settings.local.json`、`aidlc.settings.local.json`（自分の設定） |
+| | `aidlc/active-memory/`（アクティブなスペースの `memory/` をエンジンがコピーしたもので、各ハーネスの include が読む。セッション開始時とスペース切り替え時に書かれるので、切り替えで追跡対象のファイルは変わらない。コピーされた各ファイルは編集すべきファイルを示すコメントで始まり、コピー側で行った編集は次の更新で置き換えられる） |
+| | `aidlc/.aidlc-request-text/`（エンジンが読むためにエージェントがファイルへ書いた依頼。コマンドが進んだら削除され、進まなかった場合は残る） |
 
 ---
 
@@ -245,21 +272,19 @@ flowchart LR
 - **すべての構築成果物**は、ビルドとテスト、CI パイプラインへ流れる
 - **インフラ設計**の成果物は、運用ステージへ流れる
 
-ステージごとの完全な入力表は [オーケストレーションリファレンス](../reference/00-overview.md) を参照してください。
+各ステージ自身の入力は、開発者リファレンスのフェーズ別ページに一覧があります: [初期化](../reference/04-stages/initialization.md)、[アイデア創出](../reference/04-stages/ideation.md)、[構想](../reference/04-stages/inception.md)、[構築](../reference/04-stages/construction.md)、[運用](../reference/04-stages/operation.md)。
 
 ---
 
 ## フェーズ境界検証
 
-各フェーズ遷移では、追跡可能性を確認する検証が実行されます。
+3 つのステージが、追跡可能性のチェックでそれぞれのフェーズを締めくくり、その結果を `verification/` に書きます。そのステージを飛ばす計画では、そのフェーズのチェックは作られません（たとえば `mvp` は承認と引き継ぎを飛ばします）。
 
-| チェックファイル | 遷移 | 検証内容 |
+| チェックファイル | 書くステージ | 検証内容 |
 |-----------|-----------|-------------------|
-| `phase-check-initialization.md` | 初期化からアイデア創出 | ワークスペースの足場、スコープ計画、利用可能なエージェント |
-| `phase-check-ideation.md` | アイデア創出から構想 | インテント、スコープ、インテントバックログの整合性 |
-| `phase-check-inception.md` | 構想から構築 | 要件、ストーリー、アーキテクチャの整合性 |
-| `phase-check-construction.md` | 構築から運用 | すべての作業ユニットがビルド / テスト済みで、CI が設定済み |
-| `phase-check-operation.md` | 運用からワークフロー完了 | デプロイ、可観測性、フィードバックループが検証済み |
+| `phase-check-ideation.md` | 1.7 承認と引き継ぎ | インテント、スコープ、インテントバックログの整合性 |
+| `phase-check-inception.md` | 2.9 デリバリー計画 | 要件、ストーリー、アーキテクチャの整合性 |
+| `phase-check-construction.md` | 3.7 CI パイプライン | すべての作業ユニットがビルド / テスト済みで、CI が設定済み |
 
 ---
 

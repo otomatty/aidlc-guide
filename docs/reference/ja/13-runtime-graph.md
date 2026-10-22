@@ -2,8 +2,8 @@
 
 > 対象読者: レベル 2/3（チーム導入者、フレームワーク貢献者）。
 
-本章では、バージョン 0.5.0 のマイルストーン 8 で導入されたワークフロー単位の
-`runtime-graph.json` アーティファクトを説明します。これは、各承認ゲートで監査ログから
+本章では、ワークフロー単位の `runtime-graph.json` アーティファクトを説明します。
+これは、各承認ゲートで `aidlc-runtime.ts compile` によって監査ログから
 実体化される `stage-graph.json` のデータプレーン上のミラーです。このアーティファクトを
 必要とするコントロールプレーンとデータプレーンの分離については
 [プレーンアーキテクチャ](02-plane-architecture.md)を、コンパイルを起動する遷移を持つ
@@ -21,11 +21,14 @@
 承認済みのステージ、各ステージのメモリーファイルの内容、発火したセンサーを記録します。
 ワークフローごとに 1 ファイルで、`<record>/runtime-graph.json` にあります。
 `<record>/` は意図のレコードディレクトリ、すなわち
-`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` です。ノード形状は
-`stage-graph.json` と同じですが、構造ではなくテレメトリーで満たされます。
+`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` です。その行は
+`RuntimeStage` レコード（`aidlc-runtime.ts`）で、`stage-graph.json` の `GraphStage`
+（`aidlc-graph.ts`）とは別の形状です。両者はステージ識別子で結び付けられます。
 
-これは、コンシューマー（マイルストーン 11 のボルト分岐・マージ、マイルストーン 12 の
-ゲート儀式、マイルストーン 14 の診断ツール、バージョン 0.10.0 のワークフロー横断オブザーバー）が、
+これは、コンシューマー（`aidlc-lib.ts` の `resolveBoltDag` 経由で読むエンジンのユニットバッチ、
+ユニット計画ファイルがないときのステータスラインと `/aidlc --status`、`aidlc-learnings.ts` における
+`learnings surface` の `memory_path` 参照、`aidlc-doctor-bundle.ts` における診断ツールのグラフ診断、
+そして `runtime summary`）が、
 問い合わせのたびに監査ログを再走査する代わりに、単一の実体化ビューを読めるようにするために
 存在します。
 
@@ -39,14 +42,14 @@
 ```ts
 interface RuntimeGraph {
   workflow_id: string;            // ISO timestamp from LATEST WORKFLOW_STARTED audit row (so a re-created intent identifies the live workflow, not a dead one)
-  scope: string;                  // from state.md "Scope" field
+  scope: string;                  // from aidlc-state.md "Scope" field (or the latest WORKFLOW_STARTED row's Scope when the state has none)
   started_at: string;             // ISO 8601, same row as workflow_id
   stages: RuntimeStage[];         // chronological order by started_at
   bolt_dag?: BoltDag;             // present only when units-generation's unit-of-work-dependency.md carries a valid (well-formed, acyclic) fenced edge block; absent/malformed/cyclic blocks omit the node
 }
 
 interface BoltDag {
-  units: { name: string; depends_on: string[]; kind?: string }[]; // verbatim from the authored edge block; kind (service|spec|ui|packaging|library) present only when the edge block tags the unit
+  units: { name: string; depends_on: string[]; kind?: string }[]; // verbatim from the authored edge block; new names use lowercase kebab-case, while safe legacy single-segment names beginning with a digit or containing uppercase letters, underscores, or dots remain accepted (the swarm derives a separate internal Bolt slug); kind (service|spec|ui|packaging|library) present only when the edge block tags the unit
   batches: string[][];            // topological levels; each level = units whose deps are all satisfied by prior levels; level entries sorted lexicographically (deterministic)
 }
 
@@ -63,13 +66,13 @@ interface RuntimeStage {
     tradeoffs: number;
     open_questions: number;
   } | null;
-  sensor_firings: SensorFiring[]; // empty array in milestone 8 (sensors fire in milestone 9 + milestone 10)
+  sensor_firings: SensorFiring[]; // SENSOR_FIRED rows in the stage window, paired to their terminal row by Fire id
   outcome: "approved" | "failed" | "pending";
-  learnings_captured: {           // null on pending rows; populated on transition to approved
-    from_orchestrator: number;    // zero in milestone 8 (gate ritual is milestone 12)
+  learnings_captured: {           // null on pending rows; on approved single-instance rows, RULE_LEARNED + SENSOR_PROPOSED rows in the window counted by Source
+    from_orchestrator: number;
     from_user_addition: number;
   } | null;
-  instances?: BoltInstance[];     // present only when stage runs per-Bolt; milestone 11 populates
+  instances?: BoltInstance[];     // present only when a Construction stage's window holds STATE_FORKED rows for at least two distinct Bolt slugs
 }
 
 interface BoltInstance {
@@ -86,16 +89,18 @@ interface BoltInstance {
 
 interface SensorFiring {
   id: string;
-  fire_id: string;                // 8-hex correlator emitted by the milestone 9 dispatcher on every row
-  result: "passed" | "failed" | "budget-override" | "incomplete"; // 4-state (milestone 12 Q10)
+  fire_id: string;                // 8-hex correlator (four random bytes) the sensor dispatcher stamps on every row of one fire
+  result: "passed" | "failed" | "budget-override" | "incomplete"; // the dispatcher's three terminal rows, plus incomplete for a FIRED row with no terminal (in a still-open window, only once the newest stage-start or sensor row is 60 s past it)
   ts: string;                     // FIRED row's timestamp
   detail_path?: string;
 }
 ```
 
 `instances` が存在する場合、ステージ行の単一インスタンス用フィールド
-（`started_at`、`completed_at`、`memory_entries`、`memory_breakdown`）は
-NULL です。これらの値は代わりに各インスタンスに格納されます。ステージ行のフィールドと
+（`started_at`、`completed_at`、`agent`、`memory_entries`、`memory_breakdown`）は
+NULL です。`started_at` と `completed_at` は代わりに各インスタンスに格納されます。
+`memory_entries` と `memory_breakdown` はインスタンス上でも null のままです
+（コンパイルはボルトごとのメモリーファイルを読みません）。ステージ行のフィールドと
 インスタンス配列のフィールドが同時に存在することはありません。
 
 ### ボルト / ユニット依存 DAG（`bolt_dag`）
@@ -136,9 +141,9 @@ units:
 ユニットには相互依存がなく、並列実行できます。レベル内の項目は出力前に辞書順に
 ソートされるため、記述順にかかわらずノードは決定的です。
 
-アーティファクトがない場合、またはエッジブロックがない・不正（名前の重複、宙ぶらりんの
-依存・自己依存、解析不能）・循環している場合、ノードは**完全に省略**されます。
-`compile` は理由を示す診断を標準エラー出力に書き込み、誤っているが形式上は有効な DAG を出力する
+アーティファクトがない場合（この場合は何も出力しません）、またはアーティファクトはあるが
+エッジブロックがない・不正（名前の重複、宙ぶらりんの依存・自己依存、解析不能）・循環している場合、
+ノードは**完全に省略**されます。後者の場合、`compile` は理由を示す診断を標準エラー出力に書き込み、誤っているが形式上は有効な DAG を出力する
 代わりに、エンベロープから `bolt_dag` を除外します。これらの失敗は、同じブロックを検証して
 `edge_block: ok | absent | malformed | cyclic` を報告する `required-sections` センサーにより、
 2.7 ゲートで上流へ通知されます。エンジンは 2.7 のレビュー依頼の前と 2.7 ゲートが開く前にも
@@ -162,22 +167,24 @@ units:
 （[フックとツール](06-hooks-and-tools.md#posttooluse-rebuild-stage-graphts) を参照）。
 どちらもコンパイルには影響しません。そのあと低コストに絞り込みます。
 
-1. **コマンドフィルター** — 状態遷移が可能な `aidlc` の state、jump、Bolt、utility、orchestrate report
-   ルートだけが早期終了を通過します。runtime ルートは除外されます
+1. **コマンドフィルター**（`aidlc-lib.ts` の `classifyRuntimeCompileCommand`）:
+   `state`、`jump`、`bolt`、`unit`、`utility` の各ツール、`orchestrate report`、
+   そして意味的な単発ルート（`aidlc status`、`doctor`、`version`、`help`、`scope change`、
+   `config set`、`recompose`、`report`）だけが早期終了を通過します。runtime ルートは拒否されます
    （再帰防止）。`aidlc-log.ts` は冗長なステージ内イベントのみを出力し、
    `aidlc-worktree.ts` は WORKTREE_* イベントのみを出力します。
 2. **監査の存在ガード** — 意図の `audit/` シャードがまだ存在しない場合は終了します。
 3. **ハートビート** — 診断ツールによる無応答フック検知のため、
    `<record>/.aidlc-engine/hooks-health/rebuild-stage-graph.last` を書き込みます。
-4. **末尾 3 ブロックの読み取り** — `audit.md` を `\n---\n` で分割し、
-   最後の 3 エントリを取得します。
-5. **イベントクラスフィルター** — 次のパターンを
-   `**Event**: (GATE_APPROVED|STAGE_STARTED|STAGE_AWAITING_APPROVAL|AUDIT_MERGED|WORKFLOW_COMPLETED)`
+4. **末尾 3 ブロックの読み取り**: アクティブな意図のすべての `audit/` シャードを 1 つの
+   バッファに統合し、それを `\n---\n` で分割して、最後の 3 エントリを取得します。
+5. **イベントクラスフィルター**: 次のパターンを
+   `**Event**: (GATE_APPROVED|STAGE_STARTED|STAGE_AWAITING_APPROVAL|AUDIT_MERGED|UNIT_MERGED|WORKFLOW_COMPLETED)`
    3 ブロックのいずれかと照合します。一致しなければ終了します。
 6. **ディスパッチ** — `aidlc engine runtime compile ...`。
 
 `WORKFLOW_COMPLETED` が遷移セットに含まれるため、最終ステージの承認でコンパイルが
-起動します。`aidlc-state.ts:575-593` の `handleCompleteWorkflow` は
+起動します。`aidlc-state.ts` の `handleCompleteWorkflow` は
 STAGE_COMPLETED + PHASE_COMPLETED + PHASE_VERIFIED + WORKFLOW_COMPLETED の 4 つの
 監査行を出力し、このうち最後の 3 行は PHASE_COMPLETED + PHASE_VERIFIED +
 WORKFLOW_COMPLETED です。（承認パスでは、承認処理がすでに STAGE_COMPLETED を出力済み
@@ -202,8 +209,8 @@ WORKFLOW_COMPLETED です。（承認パスでは、承認処理がすでに STA
 機械ローカルなので、新しいクローン、`git clean`、フックによるコンパイルの 1 回の取りこぼしでも、
 ワークフローの途中に同じ穴が生じます。したがって消費側は、ファイルの欠落を通常の状態として扱い、
 再計算または縮退しなければならず、失敗してはなりません。`learnings surface` は読み取る唯一の
-フィールド（`memory_path`。コンパイルとまったく同じ方法で導出します）を再計算し、
-再構築コマンドを示す警告を標準エラー出力に書くので、§13 の儀式は最初のゲートでも実行されます。
+フィールド（`memory_path`。コンパイルとまったく同じ方法で導出します）を何も出力せずに再計算するので、
+ステージプロトコルの第 13 節の儀式は最初のゲートでも実行されます。
 一方、不正な（MALFORMED）ファイルや、`memory_path` を持たずに存在する行は別です。
 それは破損であり、失敗します。
 
@@ -250,18 +257,17 @@ WORKFLOW_COMPLETED です。（承認パスでは、承認処理がすでに STA
 ## 5. MEMORY_EMPTY の意味
 
 `MEMORY_EMPTY` 監査行は、ステージ行が以下の**すべて**を満たす場合にコンパイルから
-出力されます（唯一の出力元。`audit-format.md:171` が
-`tools/aidlc-runtime.ts compile` を登録しています）。
+出力されます（唯一の出力元。`audit-format.md` のイベントレジストリの Learning Loop 節が
+`tools/aidlc-runtime.ts compile` を挙げています）。
 
-- `outcome === "approved"`（保留中行は出力しません。後述の §6 を参照）
+- `outcome === "approved"`（保留中行は出力しません。後述を参照）
 - `memory_entries === 0`（ファイルが存在し、標準の 4 つの §13 見出しの下の
   エントリがゼロ）
 
 エントリがゼロの保留中行は出力**しません**。まだ実行中のステージは、コンダクターが
 まだメモリーファイルに書いていないため、正当にエントリがゼロである場合があります。実行中に
 MEMORY_EMPTY を出力すると、実際に記録を省略したことを表さないノイズが生まれます。
-マイルストーン 14 の診断ツールが必要とするシグナルは「エントリゼロで承認済みのステージ」であり、
-ステージが承認されていることが前提です。
+シグナルは「エントリゼロで承認済みのステージ」であり、ステージが承認されていることが前提です。
 
 ### 冪等性 — (ステージ識別子, ゲート完了) ごとに厳密に 1 回
 
@@ -269,7 +275,7 @@ MEMORY_EMPTY を出力すると、実際に記録を省略したことを表さ�
 等価です。MEMORY_EMPTY の出力にはさらに強い保証があります。
 **`(stage_slug, completed_at)` タプルごとに MEMORY_EMPTY 行は最大 1 行です**。
 
-ロックされたセクション内で、コンパイルは `audit.md` を再読み込みし、エントリゼロで
+ロックされたセクション内で、コンパイルは意図の `audit/` シャードを再読み込みし、エントリゼロで
 承認済みの各ステージ識別子に既存の MEMORY_EMPTY 行がないか走査します。以前のいずれかの行の
 タイムスタンプがこの識別子の `completed_at` 以降なら、出力を抑制します。つまり次のとおりです。
 
@@ -280,9 +286,6 @@ MEMORY_EMPTY を出力すると、実際に記録を省略したことを表さ�
   （より後の `completed_at`）が生成されます。再承認時にもステージが空なら、以前の行の
   タイムスタンプは新しい完了時刻より前になるため、新たな MEMORY_EMPTY 行が出力されます。
 
-診断ツールの MEMORY_EMPTY 率メトリクスは、重複排除なしでこれらの行を直接読み取ります。
-空の記録を伴うゲート完了ごとに 1 行です。
-
 ロックされたセクション内で MEMORY_EMPTY が出力された後、アーティファクトの書き込みに
 失敗した場合、監査ログにはランタイムグラフが作成されなかったステージの N 個の
 MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれらの行を検出して再出力を
@@ -291,28 +294,24 @@ MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれ�
 
 ---
 
-## 6. バージョン 0.4.0 のバックフィル規則
+## 6. メモリーファイル欠落時の規則
 
-マイルストーン 13 のメモリーファイルライフサイクルが提供される前に完了したステージには、
-メモリーファイルの履歴がありません。バックフィル規則は次のとおりです。
+メモリーファイルが存在しない（記録が一度も作成されなかった）ステージは、件数が null になり、
+MEMORY_EMPTY 行も出力されません。
 
-- `memory_entries: null` ↔ `memory_breakdown: null` ↔ MEMORY_EMPTY を出力しない。
+- `memory_entries: null`、`memory_breakdown: null`、MEMORY_EMPTY を出力しない。
 - 両フィールドは常に一緒に変化します。判別基準は
   「`parseMemoryHeadings` は実行されたか」です。メモリーファイルが存在する場合
   （ゼロバイトでも）は実行済みでキーは数値になり、メモリーファイルがない場合は両方とも
   `null` です。
 
-この規則がなければ、バージョン 0.4.x から 0.5.0 にアップグレードするすべてのユーザーは、最初の
-アップグレード後のワークフローで大量の MEMORY_EMPTY 行を見ることになります。
-
 ---
 
-## 7. 回復モデル — スナップショット + サフィックス再生
+## 7. 回復ソース
 
-`runtime-graph.json` と `audit.md` はイベントソーシングのペアを構成します。
-`audit.md` は追記専用のイベントログ、`runtime-graph.json` は最後のゲート遷移時に
-取得された実体化スナップショットです。両方を持つリーダーは、スナップショットを読み、
-その最後の `completed_at` 以降の監査行を再生して現在の状態を復元します。
+`runtime-graph.json` と意図の `audit/` シャードはイベントソーシングのペアを構成します。
+シャードは追記専用のイベントログ、`runtime-graph.json` は最後の遷移クラスの出力時に
+取得された実体化スナップショットで、各コンパイルはログ全体からそれを再導出します。
 
 人が読む順番で、回復ソースは 5 つあります。
 
@@ -320,7 +319,7 @@ MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれ�
 2. **`memory.md`**（`<record>/<phase>/<stage>/memory.md`）— コンダクターが記録することを
    選んだ内容。
 3. **`audit/` シャード** — 正式なイベントログ。実際に何が起きたか。
-4. **状態ファイル** — アクティブなステージのカーソル。
+4. **`aidlc-state.md`**: アクティブなステージのカーソル。
 5. **`runtime-graph.json`** — 実体化ビュー。監査ログの再走査より高速に問い合わせられますが、
    常に監査ログから再導出できます。
 
@@ -332,24 +331,24 @@ MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれ�
 回復時のコンシューマーは回復時点で `memory.md` を再解析しなければなりません。
 保留中行のスナップショット化された数を信頼しては**いけません**。
 
-バージョン 0.5.0 には保留中件数をライブで読むコンシューマーはありません。この例外処理を
-必要とするバージョン 0.6.0 の `--resume` に向けて記録されています。
+`aidlc-state.ts resume`（`handleResume`）は `runtime-graph.json` を読みません。
+`aidlc-state.md` のカーソルフィールド（現在のステージ、フェーズ、ステータス、スコープ、エージェント、
+次のステージ、ゲートの状態、設定されていればユニットのチェックポイント）を報告し、監査ログの末尾から
+後にステージの活動がない `SESSION_COMPACTED` 行を走査します。
 
-### 並列ボルトの実行途中の回復（バージョン 0.5.0 で解決）
+### 並列ボルトの実行途中の回復
 
-並列ボルトを持つワークフローがバッチの途中でクラッシュした場合、マイルストーン 8 には
-ボルトごとの回復の接続点がありませんでした。スキーマは `instances?` を予約していましたが、
-コンパイルはメインに単一インスタンス行しか書き込まず、作業ツリーはランタイムグラフの
-フラグメントを受け取っていませんでした。これはバージョン 0.5.0 で、`aidlc-runtime.ts fragment-fork`
-（ボルト開始）と `fragment-merge`（ボルト完了時の `--merge`）、および監査が
-構築フェーズのステージウィンドウ内に 2 つ以上の異なるステージ識別子を示すときに
-`BoltInstance[]` を出力するコンパイルの投入処理拡張により解決しました。
+`aidlc-runtime.ts fragment-fork`（`aidlc-bolt start --worktree` から呼ばれます）は、
+メインの `runtime-graph.json` をボルトの作業ツリーへバイトコピーし（メインにない場合は
+空のグラフをそこに書き込みます）、`fragment-merge`（`aidlc-bolt complete --merge` から
+呼ばれます）はそれを削除します。どちらも監査行を出力しません。コンパイルは、構築フェーズの
+ステージのウィンドウに少なくとも 2 つの異なるボルト識別子の `STATE_FORKED` 行がある場合に
+`BoltInstance[]` を投入します。ライフサイクルの全体は第 11 節にあります。
 
-ボルトごとのフラグメントはバージョン 0.5.0 では生成されても使われません（作業ツリーのレコード
-ディレクトリにある `runtime-graph.json` を読むバージョン 0.5.0 のリーダーはありません）。
-バージョン 0.6.0 の `--resume` は、メインのマージ後ランタイムグラフを正式なものとして、
-フラグメントをヒントとして扱うべきです。さらに `aidlc-bolt.ts` に従って孤立した
-作業ツリーを確認し、その回復プロンプトを表示する必要があります。
+作業ツリーのフラグメントの内容を読むコンシューマーはありません。`fragment-merge` はそれを
+ハッシュして削除し、スウォームの回復はそれを再開用アーカイブへ移し、`resume` は
+`aidlc-state.md` と監査ログの末尾（前述）から報告し、メインのマージ後の
+`runtime-graph.json` はメインの監査シャードから再構築されます。
 
 ---
 
@@ -412,21 +411,15 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
 
 ---
 
-## 10. 今後の PR で解消される既知のギャップ
+## 10. ハーネスのディスパッチ
 
-- **MEMORY_EMPTY 率メトリクス** — マイルストーン 14 の診断ツールが、§5 で固定した
-  `(Stage, ISO-second)` の重複排除タプルを使用して率を表示します。
-- **`learnings_captured` の来歴件数** — マイルストーン 12 のゲート儀式が
-  `from_orchestrator` と `from_user_addition` を投入します。
-- **`sensor_firings` 配列** — マイルストーン 9 とマイルストーン 10 がセンサーを
-  ディスパッチし、このスロットを投入します。
-- **`runtime-graph.json` のボルト分岐・マージ** — バージョン 0.5.0 で
-  `fragment-fork`（新しい監査イベントなし。STATE_FORKED + AUDIT_FORKED に追随）と
-  `fragment-merge`（新しい監査イベントなし。STATE_MERGED + AUDIT_MERGED に追随）により
-  解決しました。構築ステージのウィンドウ内に 2 つ以上の異なるステージ識別子がある場合、
-  コンパイルは監査の BOLT_*-タグ付きイベントから `instances[]` を投入します。
-- **ヘッドレスワークフローの CLI モードディスパッチ** — バージョン 0.6.0+ では Claude Code 以外の
-  実行パスが提供される可能性があります。このフックは Claude Code セッション内でのみ発火します。
+コンパイルフックは Claude Code のフックではなく、コアのフックです。Claude Code は
+`settings.json` でこれを PostToolUse の Bash フックとして登録します。Codex、Copilot、Cursor、
+Kiro CLI、Kiro IDE、opencode のアダプターは、各自のシェルのツール使用後イベントを同じ
+`aidlc-rebuild-stage-graph.ts` へ転送します。Kiro IDE はシェルコマンドを提示しないため、
+そのアダプターは `source: "ide-audit-sync"` を送り、フックはコマンドフィルターを飛ばして
+監査ログの末尾でゲートし、`runtime-graph.json` がすべての監査シャード以上に新しい場合は
+コンパイルを飛ばします。
 
 ---
 
@@ -484,6 +477,6 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
   データプレーンの分離です。[プレーンアーキテクチャ](02-plane-architecture.md)を参照してください。
 - **コンパイルを起動するライフサイクル** — 監査出力がコンパイルフックを駆動する、
   ワークフロー / フェーズ / ステージの遷移です。[状態機械](12-state-machine.md)を参照してください。
-- **このグラフの派生元となる監査ログ** — 115イベントの分類と出力元レジストリです。
+- **このグラフの派生元となる監査ログ** — 120イベントの分類と出力元レジストリです。
   [状態機械](12-state-machine.md)およびユーザーガイドの
   [状態と監査証跡](../guide/10-state-and-audit.md)を参照してください。

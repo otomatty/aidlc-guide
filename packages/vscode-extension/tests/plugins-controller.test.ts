@@ -49,7 +49,7 @@ async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<Plugin
   });
   const bundles = path.join(base, "extension", "dist", "plugins");
   const bundle = path.join(bundles, "focus", "claude");
-  await write(path.join(bundle, ".claude-plugin", "plugin.json"), { name: "aidlc-focus", version: "0.1.0" });
+  await write(path.join(bundle, ".claude-plugin", "plugin.json"), { name: "focus", version: "0.1.0" });
   await write(path.join(bundle, "stages", "construction", "focus-test.md"), "# テスト先行\n");
   await write(path.join(bundle, "hooks", "compose.ts"), "export {};\n");
   const plugin = {
