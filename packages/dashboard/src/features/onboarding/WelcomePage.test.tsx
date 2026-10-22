@@ -132,7 +132,7 @@ describe("はじめに page", () => {
     );
   });
 
-  it("enlarges a screenshot in a dialog and closes it with Escape", async () => {
+  it("enlarges a screenshot, restores focus after Escape, and can reopen and close", async () => {
     renderWelcome();
     const [enlarge] = screen.getAllByRole("button", { name: /拡大して表示/ });
     await userEvent.click(enlarge as HTMLElement);
@@ -140,6 +140,14 @@ describe("はじめに page", () => {
     expect(within(dialog).getByRole("img").getAttribute("alt")).not.toBe("");
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(enlarge));
+    await userEvent.keyboard("{Enter}");
+    const reopened = await screen.findByRole("dialog", {
+      name: "今どこまで進んだか、ひと目で確認",
+    });
+    await userEvent.click(within(reopened).getByRole("button", { name: "閉じる" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(enlarge));
   });
 
   it("opens an on-demand feature from its introduction", async () => {
