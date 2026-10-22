@@ -12,6 +12,8 @@ import { createReviewFreshnessReader } from "./review-freshness.ts";
 // so unlike the engine's historical review context they reset on a new attempt.
 // v2.11.0 adds stageJumpReaches (a jump resets only its Target and later
 // stages) and reviewRecordNotHere (relaxed/off keep an absent record's verdict).
+// v2.11.1 adds reviewCompletionDidNotFinish: the NOT-READY fallback recorded
+// when a retried review wrote nothing is no reviewer's verdict, so it shows none.
 
 export const REVIEW_DIRNAME = ".aidlc-engine/reviews";
 export const REVIEW_DIRNAMES = [REVIEW_DIRNAME, ".aidlc-reviews"] as const;
@@ -51,6 +53,7 @@ const FIELDS = new Set([
   "Review Appendix Prior Length",
   "Review Record",
   "Review Record Digest",
+  "Review Finished",
   "Verdict",
 ]);
 type Fields = Record<string, string>;
@@ -221,22 +224,32 @@ async function recordAbsent(root: string, relative: string): Promise<boolean> {
 }
 
 /**
+ * v2.11.1 reviewCompletionDidNotFinish: a NOT-READY row marked `Review
+ * Finished: no`, or, before the field, one whose paired record has an empty
+ * body. `body` is undefined when no record was paired.
+ */
+const didNotFinish = (fields: Fields, body: unknown): boolean =>
+  fields.Verdict === "NOT-READY" &&
+  (fields["Review Finished"] !== undefined ? fields["Review Finished"] === "no" : body === "");
+
+/**
  * `acceptsAbsent` is the resolved Guard Policy being relaxed or off. Mirrors the
  * v2.11.0 review receipt scan (`reviewRecordNotHere`): a completion that matches
  * its request but whose record is not in this checkout keeps its recorded
  * verdict; a record that is here must still match its digest under every policy.
+ * A verified completion of a review that did not finish is `"unfinished"`.
  */
 async function verifiedVerdict(
   root: string,
   fields: Fields,
   acceptsAbsent: boolean,
-): Promise<Verdict | null> {
+): Promise<Verdict | "unfinished" | null> {
   const relative = recordPath(fields);
   if (!relative) return null;
   const bytes = await recordBytes(root, relative);
   if (bytes === null && acceptsAbsent && (await recordAbsent(root, relative)))
     // `matches` already admitted only a READY or NOT-READY row verdict.
-    return fields.Verdict as Verdict;
+    return didNotFinish(fields, undefined) ? "unfinished" : (fields.Verdict as Verdict);
   if (
     !bytes ||
     `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== fields["Review Record Digest"]
@@ -287,7 +300,9 @@ async function verifiedVerdict(
     )
   )
     return null;
-  return value.verdict === "READY" || value.verdict === "NOT-READY" ? value.verdict : null;
+  // The binding above makes it the row's verdict, which `matches` admitted
+  // only as READY or NOT-READY.
+  return didNotFinish(fields, value.body) ? "unfinished" : (value.verdict as Verdict);
 }
 
 function pairKey(f: Fields): string {
@@ -450,7 +465,8 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
       for (const fields of candidates) {
         const verdict = await verifiedVerdict(recordDir, fields, isCurrent.acceptsChanges);
         if (verdict !== null) {
-          cells.set(key, (await isCurrent(fields)) ? verdict : null);
+          // A review that did not finish consumes its request with no verdict.
+          cells.set(key, verdict !== "unfinished" && (await isCurrent(fields)) ? verdict : null);
           // A stale but valid completion still consumed this request. A later
           // replay must not substitute a different verdict for its receipt.
           break;

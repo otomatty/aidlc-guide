@@ -8,19 +8,25 @@ import { canonicalPath } from "@aidlc-guide/core-utils";
  * Read-only projection of aidlc-workflows v2.8.2 (355903d), core/tools/aidlc-lib.ts:
  * reviewArtifactContentsFingerprint, workspaceSourceState and unitSourceFingerprint,
  * with the v2.11.0 source boundary (hard-excluded caches and byproduct files,
- * root settings, .NET outputs, sameWorkspaceSource aliases) and Guard Policy
- * resolution (resolveGuardPolicy). Never imports or executes an installed
- * engine. Unknown inputs fail closed.
+ * root settings, .NET outputs, sameWorkspaceSource aliases), the v2.11.1
+ * additions (committed text read with CRLF as LF and its raw-bytes alias,
+ * .codegraph/.idea/DerivedData, dependency folders beside their manifest, the
+ * registry's `exclude` list) and Guard Policy resolution (resolveGuardPolicy).
+ * Never imports or executes an installed engine. Unknown inputs fail closed.
  */
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const HASH = /^sha256:[0-9a-f]{64}$/;
 const MAX_FILE = 10 * 1024 * 1024;
 const MAX_BYTES = 64 * 1024 * 1024;
 const MAX_ENTRIES = 10_000;
+// v2.11.1 SOURCE_FINGERPRINT_HARD_EXCLUDED_NAMES (.codegraph, .idea and
+// DerivedData are new there, with no earlier-walk alias).
 const HARD = new Set([
   ".cache",
+  ".codegraph",
   ".git",
   ".gradle",
+  ".idea",
   ".mypy_cache",
   ".next",
   ".nuxt",
@@ -29,6 +35,7 @@ const HARD = new Set([
   ".tox",
   ".venv",
   ".vs",
+  "DerivedData",
   "__pycache__",
   "node_modules",
   "venv",
@@ -46,6 +53,25 @@ const ROOT_SETTINGS = new Set(["aidlc.settings.json", "aidlc.settings.local.json
 // v2.11.0 SOURCE_FINGERPRINT_DOTNET_OUTPUT_NAMES: conditional only beside a project file.
 const DOTNET_OUTPUTS = new Set(["bin", "obj", "out"]);
 const DOTNET_PROJECT = /\.(?:cs|fs|vb)proj$/i;
+// v2.11.1 SOURCE_FINGERPRINT_MANIFEST_DEPENDENCY_DIRS: the directories a package
+// manager fills beside the manifest it reads, conditional only in that
+// directory, with no earlier-walk alias.
+const MANIFEST_DEPENDENCIES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["composer.json", ["vendor"]],
+  ["go.mod", ["vendor"]],
+  ["Podfile", ["Pods"]],
+  ["mix.exs", ["deps", "_build"]],
+  ["pubspec.yaml", [".dart_tool"]],
+  ["bower.json", ["bower_components"]],
+  ["Gemfile", [".bundle"]],
+  ["stack.yaml", [".stack-work"]],
+]);
+const manifestDependencyDirs = (names: readonly string[]) =>
+  new Set(names.flatMap((name) => MANIFEST_DEPENDENCIES.get(name) ?? []));
+// v2.11.1 SOURCE_FINGERPRINT_REGISTRY and its size and list limits.
+const REGISTRY = ".aidlc-source-paths.json";
+const REGISTRY_MAX_BYTES = 1024 * 1024;
+const REGISTRY_MAX_ENTRIES = 10_000;
 // v2.11.0 legacyMaxFiles / legacyMaxBytes: past these the earlier value is dropped.
 const LEGACY_MAX_FILES = 10_000;
 const LEGACY_MAX_BYTES = 256 * 1024 * 1024;
@@ -56,6 +82,51 @@ const FILENAMES: Readonly<Record<string, string>> = {
   traceability: "traceability.json",
 };
 const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+
+/**
+ * v2.11.1 committedTextBytes / committedTextParts: CRLF reads as LF only for a
+ * file Git itself would convert. A NUL, a lone CR, or more than one control
+ * byte per 128 printable ones (a trailing 0x1A not counted) keeps the raw
+ * bytes. Returns the same Buffer when the reading does not apply.
+ */
+function committedText(bytes: Buffer): Buffer {
+  if (!bytes.includes(13)) return bytes;
+  const parts: Buffer[] = [];
+  let printable = 0;
+  let nonprintable = 0;
+  let start = 0;
+  for (let at = 0; at < bytes.length; at++) {
+    const byte = bytes[at] as number;
+    if (byte === 13) {
+      // Every CR here is part of a CRLF, so the text holds at least one.
+      if (bytes[at + 1] !== 10) return bytes;
+      parts.push(bytes.subarray(start, at));
+      start = at + 1;
+      at++;
+    } else if (byte === 0) {
+      return bytes;
+    } else if (
+      byte === 127 ||
+      (byte < 32 && byte !== 10 && byte !== 8 && byte !== 9 && byte !== 27 && byte !== 12)
+    ) {
+      nonprintable++;
+    } else if (byte !== 10) {
+      printable++;
+    }
+  }
+  parts.push(bytes.subarray(start));
+  if (bytes.at(-1) === 26) nonprintable--;
+  return printable >> 7 >= nonprintable ? Buffer.concat(parts) : bytes;
+}
+
+/**
+ * A fingerprint as v2.11.1 computes it, and the raw-bytes form recorded before
+ * line endings were read as LF when that differs (rememberRawFingerprint).
+ */
+type Forms = { current: string; raw: string | null };
+/** v2.11.1 currentFingerprintForm: a recorded value in either form matches. */
+const matchesForms = (recorded: string | undefined, forms: Forms) =>
+  recorded === forms.current || (forms.raw !== null && recorded === forms.raw);
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const segment = (value: unknown): value is string =>
@@ -244,7 +315,7 @@ async function artifacts(
   stage: ReviewArtifactStage,
   unit: string,
   kind: string | null,
-): Promise<string | null> {
+): Promise<Forms | null> {
   if (!segment(unit) || stage.for_each !== "unit-of-work" || stage.phase !== "construction")
     return null;
   const names = [...stage.produces, ...(stage.optional_produces ?? [])].filter(
@@ -260,14 +331,29 @@ async function artifacts(
     }))
     .sort((a, b) => a.logical.localeCompare(b.logical));
   const manifest: [string, string][] = [];
+  // v2.11.1: the same manifest over raw bytes, as recorded before 2.11.1.
+  const rawManifest: [string, string][] = [];
+  let rawDiffers = false;
   let targetFound = false;
   for (const entry of entries) {
     const bytes = await snapshot.read(record ? `${record}/${entry.logical}` : entry.logical);
     if (bytes === null) return null;
-    if (entry.name === stage.review_artifact && Buffer.isBuffer(bytes)) targetFound = true;
-    manifest.push([entry.logical, Buffer.isBuffer(bytes) ? `sha256:${hash(bytes)}` : bytes]);
+    if (!Buffer.isBuffer(bytes)) {
+      manifest.push([entry.logical, bytes]);
+      rawManifest.push([entry.logical, bytes]);
+      continue;
+    }
+    if (entry.name === stage.review_artifact) targetFound = true;
+    const text = committedText(bytes);
+    if (text !== bytes) rawDiffers = true;
+    manifest.push([entry.logical, `sha256:${hash(text)}`]);
+    rawManifest.push([entry.logical, `sha256:${hash(bytes)}`]);
   }
-  return targetFound ? `sha256:${hash(JSON.stringify(manifest))}` : null;
+  if (!targetFound) return null;
+  return {
+    current: `sha256:${hash(JSON.stringify(manifest))}`,
+    raw: rawDiffers ? `sha256:${hash(JSON.stringify(rawManifest))}` : null,
+  };
 }
 
 /** Useful independently for callers that already resolved a stage and unit kind. */
@@ -282,7 +368,7 @@ export async function currentReviewArtifactFingerprint(
   try {
     const snapshot = new Snapshot(await canonicalPath(recordDir));
     const result = await artifacts(snapshot, "", stage, unit, kind);
-    return (await snapshot.stable()) ? result : null;
+    return (await snapshot.stable()) ? (result?.current ?? null) : null;
   } catch {
     return null;
   }
@@ -554,7 +640,7 @@ export async function createReviewFreshnessReader(
       const kinds = await unitKinds;
       if (kinds === null && stage.produces_kinds !== undefined) return false;
       const current = await artifacts(snapshot, record, stage, unit, kinds?.get(unit) ?? null);
-      if (current === null || current !== fields["Artifact Fingerprint"]) return false;
+      if (current === null || !matchesForms(fields["Artifact Fingerprint"], current)) return false;
       if (
         stage.workspace_requires ||
         fields["Source Fingerprint"] ||
@@ -568,7 +654,10 @@ export async function createReviewFreshnessReader(
         )
           return false;
         const unitFingerprint = await unitSource(snapshot, record, stage.slug, unit, currentSource);
-        if (unitFingerprint === null || unitFingerprint !== fields["Unit Source Fingerprint"])
+        if (
+          unitFingerprint === null ||
+          !matchesForms(fields["Unit Source Fingerprint"], unitFingerprint)
+        )
           return false;
       }
       return snapshot.stable();
@@ -719,8 +808,16 @@ async function loadUnitKinds(
 
 type SourceState = {
   fingerprint: string;
+  /** v2.11.1: the fingerprint over raw bytes, when line endings made it differ. */
+  raw: string | null;
   listing: Map<string, string>;
+  /** v2.11.1 rawFingerprintForm of a listing entry: its raw-bytes entry. */
+  rawEntries: Map<string, string>;
   shell: Set<string>;
+  /** v2.11.1 registry `exclude` entries, normalized. */
+  excludes: readonly string[];
+  /** Dependency directories the walk left out beside their manifest. */
+  dependencies: Set<string>;
   /** v2.11.0 legacyWorkspaceSourceAliases: the walk before files were excluded by name. */
   legacy: () => Promise<string | null>;
   /** v2.11.0 earlierBoundaryWorkspaceSources: the walk before .NET outputs left. */
@@ -739,10 +836,17 @@ type LegacyEntry =
 
 interface SourceWalk {
   lines: string[];
+  /** v2.11.1 rawLines: the raw form of a file line, by its index in `lines`. */
+  rawLines: Map<number, string>;
   legacy: LegacyEntry[];
   listing: Map<string, string>;
+  rawEntries: Map<string, string>;
+  dependencies: Set<string>;
   dotnetOutputSeen: boolean;
 }
+
+const excludedBy = (excludes: readonly string[], rel: string) =>
+  excludes.some((excluded) => rel === excluded || rel.startsWith(`${excluded}/`));
 
 const workspaceDigest = (lines: readonly string[]) =>
   hash(
@@ -758,10 +862,14 @@ async function walkSource(
   snapshot: Snapshot,
   shell: ReadonlySet<string>,
   dotnetOutputs: boolean,
+  excludes: readonly string[],
 ): Promise<SourceWalk | null> {
   const lines: string[] = [];
+  const rawLines = new Map<number, string>();
   const legacy: LegacyEntry[] = [];
   const listing = new Map<string, string>();
+  const rawEntries = new Map<string, string>();
+  const dependencies = new Set<string>();
   let dotnetOutputSeen = false;
   let earlierFiles = 0;
   let earlierBytes = 0;
@@ -770,20 +878,26 @@ async function walkSource(
     const names = await snapshot.list(relative);
     if (names === null) return false;
     const dotnetProject = names.some((name) => DOTNET_PROJECT.test(name));
+    const owned = manifestDependencyDirs(names);
     for (const name of names) {
       const rel = relative ? `${relative}/${name}` : name;
-      if (name === ".git" || sensorCache(rel)) continue;
+      // v2.11.1: the registry's exclude list comes first, whatever the entry is.
+      if (excludedBy(excludes, rel) || name === ".git" || sensorCache(rel)) continue;
       // Excluded roots are not traversed, even when installed as symlinks.
       if (!relative && shell.has(name)) continue;
       const dotnetOutput = dotnetProject && DOTNET_OUTPUTS.has(name);
       let earlier = earlierOutput;
-      if (HARD.has(name) || GENERATED.has(name) || dotnetOutput) {
+      if (HARD.has(name) || GENERATED.has(name) || dotnetOutput || owned.has(name)) {
         const info = await lstat(path.join(snapshot.root, rel)).catch(() => null);
         if (info === null) return false;
         if (info.isDirectory() || info.isSymbolicLink()) {
           if (name === "__pycache__")
             legacy.push({ at: lines.length, rel, kind: "pycache", linked: info.isSymbolicLink() });
           if (HARD.has(name) || GENERATED.has(name)) continue;
+          if (owned.has(name)) {
+            dependencies.add(rel);
+            continue;
+          }
           dotnetOutputSeen = true;
           if (dotnetOutputs) continue;
           earlier = true;
@@ -811,14 +925,23 @@ async function walkSource(
         }
         const bytes = await snapshot.read(rel);
         if (!Buffer.isBuffer(bytes)) return false;
-        const sha = hash(bytes);
-        lines.push(`file:${rel}:${executable ? "x" : "-"}=${sha}`);
-        listing.set(rel, `${executable ? "100755" : "100644"}\t${sha}`);
+        const text = committedText(bytes);
+        const sha = hash(text);
+        const [flag, mode] = executable ? ["x", "100755"] : ["-", "100644"];
+        lines.push(`file:${rel}:${flag}=${sha}`);
+        listing.set(rel, `${mode}\t${sha}`);
+        if (text !== bytes) {
+          const raw = hash(bytes);
+          rawLines.set(lines.length - 1, `file:${rel}:${flag}=${raw}`);
+          rawEntries.set(`${mode}\t${sha}`, `${mode}\t${raw}`);
+        }
       } else return false;
     }
     return true;
   }
-  return (await walk("", 0, false)) ? { lines, legacy, listing, dotnetOutputSeen } : null;
+  return (await walk("", 0, false))
+    ? { lines, rawLines, legacy, listing, rawEntries, dependencies, dotnetOutputSeen }
+    : null;
 }
 
 /**
@@ -836,7 +959,11 @@ async function legacyFingerprint(snapshot: Snapshot, walked: SourceWalk): Promis
     if (files > LEGACY_MAX_FILES || bytes > LEGACY_MAX_BYTES) return false;
     const body = await snapshot.read(rel);
     if (!Buffer.isBuffer(body)) return false;
-    inserts.push({ at, line: `file:${rel}:${executable ? "x" : "-"}=${hash(body)}` });
+    // v2.11.1 legacyOnlyFile reads through stableFileSha256: the LF text.
+    inserts.push({
+      at,
+      line: `file:${rel}:${executable ? "x" : "-"}=${hash(committedText(body))}`,
+    });
     return true;
   };
   for (const entry of walked.legacy) {
@@ -865,14 +992,66 @@ async function legacyFingerprint(snapshot: Snapshot, walked: SourceWalk): Promis
   return (await snapshot.stable()) ? workspaceDigest(merged) : null;
 }
 
-/** v2.11.0 sameWorkspaceSource: equal, or an earlier walk's value for the same tree. */
+/**
+ * v2.11.1 sameWorkspaceSource: equal, the raw-bytes form of the same walk, or
+ * an earlier walk's value for the same tree.
+ */
 async function sameWorkspaceSource(
   recorded: string | undefined,
   current: SourceState,
 ): Promise<boolean> {
   if (recorded === current.fingerprint) return true;
   if (recorded === undefined) return false;
+  if (recorded === current.raw) return true;
   return (await current.legacy()) === recorded || (await current.earlier()).includes(recorded);
+}
+
+/**
+ * v2.11.1 sourceFingerprintRegistry, limited to what this reader reproduces:
+ * no file is no exclusion; a valid file with an empty or absent `paths` yields
+ * its normalized `exclude` entries. Registered paths, and anything the engine
+ * would refuse, are null.
+ */
+async function registryExcludes(snapshot: Snapshot): Promise<string[] | null> {
+  const bytes = await snapshot.read(REGISTRY, REGISTRY_MAX_BYTES);
+  if (bytes === "missing") return [];
+  if (!Buffer.isBuffer(bytes)) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    return null;
+  }
+  if (!object(parsed) || parsed.version !== 1) return null;
+  const paths = parsed.paths ?? [];
+  const exclude = parsed.exclude ?? [];
+  for (const list of [paths, exclude])
+    if (
+      !Array.isArray(list) ||
+      list.length > REGISTRY_MAX_ENTRIES ||
+      list.some((entry) => typeof entry !== "string")
+    )
+      return null;
+  // Registered paths need the engine's registered-only walk.
+  if ((paths as string[]).length > 0) return null;
+  const excludes = new Set<string>();
+  for (const raw of exclude as string[]) {
+    const entry = raw
+      .replace(/\\/g, "/")
+      .replace(/^\.\/+/, "")
+      .replace(/\/+$/, "");
+    // The engine also refuses an empty, `.`, rooted or `//` entry; each has an
+    // empty or dot segment here, so the segment test covers them.
+    if (
+      entry.length > 4096 ||
+      entry.includes("\0") ||
+      /^[A-Za-z]:\//.test(entry) ||
+      entry.split("/").some((part) => part.length === 0 || part === "." || part === "..")
+    )
+      return null;
+    excludes.add(entry);
+  }
+  return [...excludes];
 }
 
 /** Single-repository filesystem identity; complex source boundaries are unknown. */
@@ -917,8 +1096,9 @@ async function workspaceSource(
       shell.add(name);
   }
   // Registered generated paths and symlink targets require the full engine walker.
-  if ((await snapshot.inspect(".aidlc-source-paths.json")) !== "missing") return null;
-  const walked = await walkSource(snapshot, shell, true);
+  const excludes = await registryExcludes(snapshot);
+  if (excludes === null) return null;
+  const walked = await walkSource(snapshot, shell, true, excludes);
   if (walked === null) return null;
   // The aliases are only needed when a comparison would otherwise fail. Each
   // reads in its own snapshot so its IO never spends this build's budget.
@@ -926,8 +1106,15 @@ async function workspaceSource(
   let earlier: Promise<readonly string[]> | undefined;
   return {
     fingerprint: workspaceDigest(walked.lines),
+    raw:
+      walked.rawLines.size === 0
+        ? null
+        : workspaceDigest(walked.lines.map((line, at) => walked.rawLines.get(at) ?? line)),
     listing: walked.listing,
+    rawEntries: walked.rawEntries,
     shell,
+    excludes,
+    dependencies: walked.dependencies,
     legacy: () => {
       legacy ??=
         walked.legacy.length === 0
@@ -940,7 +1127,7 @@ async function workspaceSource(
         ? Promise.resolve([])
         : (async () => {
             const aux = new Snapshot(snapshot.root);
-            const before = await walkSource(aux, shell, false);
+            const before = await walkSource(aux, shell, false, excludes);
             if (before === null) return [];
             const old = before.legacy.length === 0 ? null : await legacyFingerprint(aux, before);
             if (!(await aux.stable())) return [];
@@ -957,7 +1144,7 @@ async function unitSource(
   stage: string,
   unit: string,
   source: SourceState,
-): Promise<string | null> {
+): Promise<Forms | null> {
   const bytes = await snapshot.read(`${record}/construction/${unit}/${stage}/source-manifest.json`);
   if (!Buffer.isBuffer(bytes)) return null;
   let value: unknown;
@@ -993,10 +1180,18 @@ async function unitSource(
     )
       return null;
     const parts = raw.split("/").filter((part) => part !== "" && part !== ".");
+    // Whether the engine would take a claim inside a dependency folder or an
+    // excluded path turns on Git's ignore rules, which this reader cannot read.
     if (
       !parts.length ||
       source.shell.has(parts[0] as string) ||
-      parts.some((part) => HARD.has(part) || GENERATED.has(part))
+      parts.some(
+        (part, index) =>
+          HARD.has(part) ||
+          GENERATED.has(part) ||
+          source.dependencies.has(parts.slice(0, index + 1).join("/")),
+      ) ||
+      excludedBy(source.excludes, parts.join("/"))
     )
       return null;
     const claim = `${parts.join("/")}${raw.endsWith("/") ? "/" : ""}`;
@@ -1009,14 +1204,22 @@ async function unitSource(
       .replaceAll("\t", "\\t")
       .replaceAll("\n", "\\n")
       .replaceAll("\r", "\\r");
-  const lines = [...source.listing]
+  const claimed = [...source.listing]
     .filter(
       ([file]) =>
         claims.has(file) ||
         [...claims].some((claim) => claim.endsWith("/") && file.startsWith(claim)),
     )
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([file, entry]) => `\t${escapeField(file)}\t${entry}\n`)
-    .join("");
-  return `sha256:${hash(`manifest\t${hash(bytes)}\t-\n${lines}`)}`;
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const serialize = (manifest: string, entry: (value: string) => string) =>
+    `sha256:${hash(
+      `manifest\t${manifest}\t-\n${claimed
+        .map(([file, value]) => `\t${escapeField(file)}\t${entry(value)}\n`)
+        .join("")}`,
+    )}`;
+  // v2.11.1 unitSourceFingerprint: the manifest's committed text, and one raw
+  // form over the raw manifest and every listing entry's raw form together.
+  const current = serialize(hash(committedText(bytes)), (value) => value);
+  const raw = serialize(hash(bytes), (value) => source.rawEntries.get(value) ?? value);
+  return { current, raw: raw === current ? null : raw };
 }

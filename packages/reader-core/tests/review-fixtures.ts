@@ -22,6 +22,10 @@ export function reviewFixture(
     sourceFingerprint?: string;
     unitSourceFingerprint?: string;
     directory?: ".aidlc-reviews" | ".aidlc-engine/reviews";
+    /** The record's `body`; v2.11.1 reads an empty one as a review that did not finish. */
+    body?: string;
+    /** v2.11.1 REVIEW_COMPLETED `Review Finished` value. */
+    finished?: string;
   } = {},
 ) {
   const unit = options.unit === undefined ? "unit-alpha" : options.unit;
@@ -56,7 +60,7 @@ export function reviewFixture(
         status: "Resolved",
       },
     ],
-    body: "## Review\n",
+    body: options.body ?? "## Review\n",
     recorded_at: "2026-09-10T00:00:02Z",
   };
   const bytes = `${JSON.stringify(record, null, 2)}\n`;
@@ -83,6 +87,7 @@ export function reviewFixture(
       : { "Request Source Fingerprint": options.sourceFingerprint }),
     "Review Record": relative,
     "Review Record Digest": `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    ...(options.finished === undefined ? {} : { "Review Finished": options.finished }),
   };
   return {
     relative,
