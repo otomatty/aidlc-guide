@@ -34,6 +34,8 @@ function gate(status: VersionGate["status"]): VersionGate {
     pin: null,
     engine: null,
     native: false,
+    projectVersion: null,
+    rollback: null,
     message: `status ${status}`,
   };
 }

@@ -240,6 +240,146 @@ describe("inspectVersionGate", () => {
     );
   });
 
+  it("asks to pin an unpinned native project when this machine's engine is newer", () => {
+    nativeTool(".claude", "claude", TARGET);
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine("2.12.0") });
+    expect(gate).toMatchObject({ status: "engine-newer", engine: "2.12.0", pin: null });
+    expect(gate.message).toContain("固定していない");
+    expect(gate.message).toContain(`${TARGET} に固定`);
+  });
+
+  it("names a newer preview engine as a preview", () => {
+    nativeTool(".claude", "claude", TARGET);
+    const preview = "2.11.1-preview.20261020.1";
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(preview) });
+    expect(gate.status).toBe("engine-newer");
+    expect(gate.message).toContain(`プレビュー版の ${preview}`);
+  });
+
+  it("keeps an older or unresolved engine as a mismatch, pinned or not", () => {
+    nativeTool(".claude", "claude", TARGET);
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine("2.10.0") }).status).toBe(
+      "engine-mismatch",
+    );
+    // A pin this machine has not registered resolves no engine, whatever the default is.
+    write(".aidlc-version", `${TARGET}\n`);
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).status).toBe(
+      "engine-mismatch",
+    );
+  });
+
+  it("reads a preview pin as a newer project, not a broken file", () => {
+    nativeTool(".claude", "claude", TARGET);
+    write(".aidlc-version", "2.11.9-preview.20261020.1\n");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(null) });
+    expect(gate.status).toBe("project-newer");
+    expect(gate.projectVersion).toBe("2.11.9-preview.20261020.1");
+    expect(gate.message).toContain("プレビュー版");
+    expect(gate.message).toContain("安定版");
+  });
+
+  it("reads preview stamps and orders a preview below its own stable release", () => {
+    nativeTool(".claude", "claude", "2.11.0-preview.20261001.1");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(gate.status).toBe("project-older");
+    expect(gate.tools[0]?.version).toBe("2.11.0-preview.20261001.1");
+  });
+
+  it("names the newest recorded version", () => {
+    nativeTool(".claude", "claude", "2.12.0");
+    nativeTool(".cursor", "cursor", TARGET);
+    write(".aidlc-version", "2.12.0\n");
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).projectVersion).toBe(
+      "2.12.0",
+    );
+  });
+
+  describe("the way back from a newer project", () => {
+    const state = (intent: string, version: number) =>
+      write(
+        path.join("aidlc", "spaces", "default", "intents", intent, "aidlc-state.md"),
+        `# AI-DLC State\n\n## Project Information\n- **Project**: demo\n- **State Version**: ${version}\n`,
+      );
+
+    it("offers the official pin-and-refresh commands, one refresh per tool", () => {
+      // Upstream refuses a bare `aidlc config` once a project has several harnesses.
+      nativeTool(".claude", "claude", "2.12.0");
+      nativeTool(".cursor", "cursor", "2.12.0");
+      write(".aidlc-version", "2.12.0\n");
+      state("260101-a", 8);
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "commands",
+        commands: [
+          `aidlc config --pin ${TARGET} --yes`,
+          "aidlc config --harness cursor --yes",
+          "aidlc config --harness claude --yes",
+        ],
+      });
+    });
+
+    it("offers only the pin when no tool is configured yet", () => {
+      write(".aidlc-version", "2.12.0\n");
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "commands",
+        commands: [`aidlc config --pin ${TARGET} --yes`],
+      });
+    });
+
+    it("names newer files a stopped install left instead of offering the pin", () => {
+      const versionFile = path.join(".claude", "tools", "aidlc-version.ts");
+      write(versionFile, 'export const AIDLC_VERSION = "2.12.0";\n');
+      write(".aidlc-version", "2.12.0\n");
+      const gate = inspectVersionGate(root, TARGET, { readEngine: engine(null) });
+      expect(gate.status).toBe("project-newer");
+      expect(gate.rollback).toEqual({ kind: "leftovers", files: [versionFile] });
+    });
+
+    it("names every leftover that is not at the target, older or unreadable ones too", () => {
+      const older = path.join(".cursor", "tools", "aidlc-version.ts");
+      const broken = path.join(".kiro", "tools", "aidlc-version.ts");
+      write(older, 'export const AIDLC_VERSION = "2.10.0";\n');
+      write(broken, "export const AIDLC_VERSION = x;\n");
+      write(".aidlc-version", "2.12.0\n");
+      const gate = inspectVersionGate(root, TARGET, { readEngine: engine(null) });
+      expect(gate.status).toBe("project-newer");
+      expect(gate.rollback).toEqual({ kind: "leftovers", files: [older, broken] });
+    });
+
+    it("points a copy-channel project to the official procedure", () => {
+      copyClaude("2.12.0");
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "copy",
+      });
+    });
+
+    it("offers no way back once a record moved to a newer state format", () => {
+      nativeTool(".claude", "claude", "2.12.0");
+      state("260101-a", 8);
+      state("260102-b", 9);
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "state-newer",
+        stateVersion: 9,
+      });
+    });
+
+    it("counts a large record readState still opens", () => {
+      nativeTool(".claude", "claude", "2.12.0");
+      write(
+        path.join("aidlc", "spaces", "default", "intents", "260103-c", "aidlc-state.md"),
+        `# AI-DLC State\n\n## Project Information\n- **State Version**: 9\n\n${"x".repeat(2 * 1024 * 1024)}\n`,
+      );
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "state-newer",
+        stateVersion: 9,
+      });
+    });
+
+    it("is only set for a newer project", () => {
+      nativeTool(".claude", "claude", "2.10.0");
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).rollback).toBeNull();
+    });
+  });
+
   it("reads the machine install by default", () => {
     nativeTool(".claude", "claude", TARGET);
     const previous = process.env.AIDLC_INSTALL_ROOT;

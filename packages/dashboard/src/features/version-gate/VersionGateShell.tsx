@@ -3,6 +3,7 @@ import {
   type VersionGate,
   type VersionGateAction,
   versionGateActionLabel,
+  versionGateRollbackGuide,
 } from "@aidlc-guide/shared-types";
 import { type ReactNode, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,19 +31,22 @@ const TITLES: Record<Exclude<VersionGate["status"], "ok">, string> = {
   "project-older": "プロジェクトの更新が必要です",
   "project-newer": "AIDLC Guide の更新が必要です",
   "engine-mismatch": "この PC への aidlc の導入が必要です",
+  "engine-newer": "プロジェクトのバージョンの固定が必要です",
   unknown: "バージョンを確認できません",
   "not-installed": "aidlc-workflows のセットアップが必要です",
 };
 
 /** What the action does to files other people share — the reason to commit, or not. */
-function actionNote(action: VersionGateAction): string | null {
+function actionNote(action: VersionGateAction, gate: VersionGate): string | null {
   switch (action) {
     case "update-project":
       return "更新すると .claude/ や .aidlc-version など、リポジトリで共有するファイルが変わります。変わるファイルは実行前に確認でき、更新後はコミットが必要です。チームのメンバーは pull した後、Guide の案内に従えば揃えられます。";
     case "install-engine":
       return "共有するファイルは変わりません。この PC だけに導入します。";
+    case "pin-project":
+      return `固定すると .aidlc-version が作られ、このプロジェクトは ${gate.target} で動きます。リポジトリで共有するファイルなのでコミットが必要です。この PC の既定バージョンはそのまま使えます。既定を ${gate.target} に戻す方法も、更新画面から選べます（固定していない他のプロジェクトにも影響します）。`;
     case "update-guide":
-      return "プロジェクトがこの Guide の対応版より新しいバージョンを使っています。Guide はプロジェクトを古いバージョンに戻しません。";
+      return "対応する AIDLC Guide が出ていれば、更新すると使えるようになります。Guide がプロジェクトを古いバージョンに戻すことはありません。";
     default:
       return null;
   }
@@ -54,7 +58,8 @@ function GateNotice({ gate, onRecheck }: { gate: VersionGate; onRecheck: () => v
   const inIde = inVsCodeWebview();
   const status = gate.status === "ok" ? "unknown" : gate.status;
   const action = VERSION_GATE_ACTIONS[status];
-  const note = actionNote(action);
+  const note = actionNote(action, gate);
+  const rollback = versionGateRollbackGuide(gate);
 
   useEffect(() => {
     heading.current?.focus();
@@ -105,6 +110,25 @@ function GateNotice({ gate, onRecheck }: { gate: VersionGate; onRecheck: () => v
             ) : null}
           </dl>
           {note === null ? null : <p>{note}</p>}
+          {rollback === null ? null : (
+            <section
+              className="flex flex-col gap-2"
+              aria-labelledby="version-gate-rollback-heading"
+              data-testid="version-gate-rollback"
+            >
+              <h2 id="version-gate-rollback-heading" className="font-medium">
+                {rollback.heading}
+              </h2>
+              {rollback.lines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+              {rollback.commands.length === 0 ? null : (
+                <pre className="rounded-md bg-muted p-3 whitespace-pre-wrap">
+                  <code>{rollback.commands.join("\n")}</code>
+                </pre>
+              )}
+            </section>
+          )}
           {inIde ? null : (
             <p>
               更新は VS Code / Cursor の AIDLC Guide から行います。IDE

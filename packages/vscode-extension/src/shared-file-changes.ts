@@ -115,3 +115,7 @@ export function sharedFilesFor(tools: readonly HarnessId[]): string[] {
 export function updateCommitMessage(target: string): string {
   return `chore: aidlc-workflows を ${target} に更新`;
 }
+
+export function pinCommitMessage(target: string): string {
+  return `chore: aidlc-workflows を ${target} に固定`;
+}

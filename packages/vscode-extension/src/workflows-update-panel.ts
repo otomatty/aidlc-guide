@@ -6,19 +6,26 @@ import {
   type VersionGate,
   type VersionGateAction,
   versionGateActionLabel,
+  versionGateRollbackGuide,
   WORKFLOWS_TARGET_VERSION,
   type WorkflowsManagementState,
 } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
 import { configureCliEnvironment } from "./cli-environment.ts";
 import {
+  CLI_PIN_CONFIRM_ACTION,
   CLI_UPDATE_CONFIRM_ACTION,
+  CLI_USE_TARGET_CONFIRM_ACTION,
   type CliManagementResult,
+  cliPinConfirmMessage,
   cliRegistersPin,
   cliUpdateConfirmMessage,
+  cliUseTargetConfirmMessage,
   inspectCliManagement,
+  pinProjectCli,
   prepareProjectCli,
   updateMachineCli,
+  useTargetCli,
 } from "./cli-management.ts";
 import { HARNESS_LABELS } from "./harness-detect.ts";
 import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
@@ -26,6 +33,7 @@ import { escapeSetupText as esc } from "./setup-html.ts";
 import {
   changedSince,
   gitStatusSnapshot,
+  pinCommitMessage,
   sharedFilesFor,
   updateCommitMessage,
 } from "./shared-file-changes.ts";
@@ -53,6 +61,7 @@ import { UPDATE_WORKFLOWS_COMMAND } from "./workflows-version.ts";
 const GATE_FOCUS: Readonly<Partial<Record<VersionGateAction, string>>> = {
   "update-project": "apply",
   "install-engine": "update-cli",
+  "pin-project": "pin-project",
   doctor: "doctor",
 };
 
@@ -103,6 +112,12 @@ ${repairStyles}
 <section id="gate" role="status" aria-labelledby="gate-heading"${blocked ? "" : " hidden"}>
 <h2 id="gate-heading">AIDLC Guide を使うには更新が必要です</h2>
 <p id="gate-message">${esc(gate?.message ?? "")}</p>
+<div id="gate-rollback" hidden>
+<h3 id="gate-rollback-heading"></h3>
+<div id="gate-rollback-lines"></div>
+<pre id="gate-rollback-commands" hidden></pre>
+<button type="button" id="copy-rollback" hidden>コマンドをコピー</button>
+</div>
 <button type="button" id="open-dashboard" hidden>AIDLC Guide を開く</button>
 </section>
 <section id="cli-section" aria-labelledby="cli-heading" aria-busy="false">
@@ -110,9 +125,11 @@ ${repairStyles}
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
 <p>マシンの既定バージョン：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象バージョン：<strong>${esc(cli.target)}</strong></p>
 <p>プロジェクトの固定バージョン：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定バージョンがあるプロジェクトは、そのバージョンを引き続き使用します。</p>
-<p id="cli-state" role="status">${esc(register ? cli.message : cli.updateMessage)}</p>
+<p id="cli-state" role="status">${esc(register || cli.engineNewer ? cli.message : cli.updateMessage)}</p>
 <div class="cli-actions">
-<button id="update-cli"${cli.canUpdate || register ? "" : " disabled"}>${register ? CLI_REGISTER_LABEL : CLI_UPDATE_LABEL}</button>
+<button id="pin-project"${cli.engineNewer ? "" : " hidden"}>${esc(versionGateActionLabel("pin-project", cli.target))}</button>
+<button type="button" class="text-link" id="use-target"${cli.engineNewer ? "" : " hidden"}>この PC の既定を ${esc(cli.target)} に戻す</button>
+<button id="update-cli"${cli.canUpdate || register ? "" : " disabled"}${cli.engineNewer ? " hidden" : ""}>${register ? CLI_REGISTER_LABEL : CLI_UPDATE_LABEL}</button>
 <p id="cli-result" role="status" aria-live="polite"></p>
 </div>
 </section>
@@ -152,6 +169,7 @@ function engineCanApply(next) {
 }
 let canUpdate = ${workflowsEngineCanApply(state)};
 let cliCanUpdate = ${cli.canUpdate || register};
+let engineNewer = ${cli.engineNewer};
 let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
 let hasTools = ${state.tools.length > 0};
 const apply = document.getElementById('apply');
@@ -160,17 +178,22 @@ function setCliProgress(text) { cliResult.textContent = text; }
 function buttons() {
   apply.disabled = busy || !canUpdate || !targetInstalled;
   document.getElementById('update-cli').disabled = busy || !cliCanUpdate;
+  document.getElementById('update-cli').hidden = engineNewer;
+  for (const id of ['pin-project', 'use-target']) {
+    document.getElementById(id).hidden = !engineNewer;
+    document.getElementById(id).disabled = busy || !engineNewer;
+  }
   document.getElementById('doctor').disabled = busy || !hasTools;
   for (const id of ['refresh', 'install', 'setup', 'extension-update']) document.getElementById(id).disabled = busy;
   document.getElementById('runtime-required').hidden = !canUpdate || targetInstalled;
   document.getElementById('cli-section').setAttribute('aria-busy', String(busy && busyScope === 'cli'));
   repairButtons();
 }
-for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).addEventListener('click', () => {
+for (const id of ['apply', 'update-cli', 'pin-project', 'use-target', 'doctor']) document.getElementById(id).addEventListener('click', () => {
   if (id === 'apply' && (!canUpdate || !targetInstalled)) return;
   busy = true;
-  busyScope = id === 'update-cli' ? 'cli' : 'project';
-  if (id === 'update-cli') setCliProgress('更新中…');
+  busyScope = id === 'apply' || id === 'doctor' ? 'project' : 'cli';
+  if (busyScope === 'cli') setCliProgress(id === 'update-cli' ? '更新中…' : '処理中…');
   buttons();
   vscode.postMessage({ type: id });
 });
@@ -179,6 +202,7 @@ for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) do
   vscode.postMessage({ type: id });
 });
 document.getElementById('copy-commit').addEventListener('click', () => vscode.postMessage({ type: 'copy-commit' }));
+document.getElementById('copy-rollback').addEventListener('click', () => vscode.postMessage({ type: 'copy-rollback' }));
 document.getElementById('open-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'open-dashboard' }));
 window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'gate') {
@@ -189,6 +213,16 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('gate-heading').textContent = ok ? 'バージョンが揃いました' : 'AIDLC Guide を使うには更新が必要です';
     document.getElementById('gate-message').textContent = ok ? 'AIDLC Guide のすべての機能を使えます。' : msg.gate.message;
     document.getElementById('open-dashboard').hidden = !ok;
+    const rollback = ok ? null : msg.rollback;
+    document.getElementById('gate-rollback').hidden = !rollback;
+    document.getElementById('gate-rollback-heading').textContent = rollback ? rollback.heading : '';
+    document.getElementById('gate-rollback-lines').replaceChildren(...(rollback ? rollback.lines : []).map(line => {
+      const item = document.createElement('p'); item.textContent = line; return item;
+    }));
+    const commands = rollback ? rollback.commands : [];
+    document.getElementById('gate-rollback-commands').textContent = commands.join('\\n');
+    document.getElementById('gate-rollback-commands').hidden = commands.length === 0;
+    document.getElementById('copy-rollback').hidden = commands.length === 0;
   }
   if (msg.type === 'focus') {
     const target = document.getElementById(msg.id);
@@ -230,9 +264,10 @@ window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'cli-state') {
     const wasInstalled = targetInstalled;
     cliCanUpdate = msg.state.canUpdate || msg.register;
+    engineNewer = !!msg.state.engineNewer;
     targetInstalled = msg.state.targetInstalled && msg.state.launcherReady;
     document.getElementById('cli-current').textContent = msg.state.machineVersion || '未インストール';
-    document.getElementById('cli-state').textContent = msg.register ? msg.state.message : msg.state.updateMessage;
+    document.getElementById('cli-state').textContent = msg.register || engineNewer ? msg.state.message : msg.state.updateMessage;
     document.getElementById('update-cli').textContent = msg.register ? ${JSON.stringify(CLI_REGISTER_LABEL)} : ${JSON.stringify(CLI_UPDATE_LABEL)};
     buttons();
     if (!wasInstalled && targetInstalled) vscode.postMessage({ type: 'ready' });
@@ -374,9 +409,15 @@ export async function openWorkflowsUpdatePanel(
     send({ type: "cli-state", state: cliState, register: cliRegistersPin(cliState) });
     const gate = gateOf();
     // Once the versions match, say so; a workspace that was never blocked shows nothing.
-    send({ type: "gate", gate: gate.status === "ok" && focus === undefined ? null : gate });
+    send({
+      type: "gate",
+      gate: gate.status === "ok" && focus === undefined ? null : gate,
+      rollback: versionGateRollbackGuide(gate),
+    });
   };
   const results = new Map<string, WorkflowsToolUpdateResult>();
+  // What "copy" puts on the clipboard: the last change this panel made to shared files.
+  let commitMessage = updateCommitMessage(WORKFLOWS_TARGET_VERSION);
   let problems: UpdateProblem[] = [];
   let initialCheckStarted = false;
   let repairCancellation: AbortController | undefined;
@@ -433,11 +474,12 @@ export async function openWorkflowsUpdatePanel(
       if (result.ok) {
         const after = await gitStatusSnapshot(workspaceRoot);
         const files = before === null || after === null ? [] : changedSince(before, after);
+        commitMessage = updateCommitMessage(WORKFLOWS_TARGET_VERSION);
         send({
           type: "shared-changes",
           files: files.slice(0, SHARED_FILES_SHOWN),
           more: Math.max(0, files.length - SHARED_FILES_SHOWN),
-          commitMessage: updateCommitMessage(WORKFLOWS_TARGET_VERSION),
+          commitMessage,
         });
       }
     } catch (cause) {
@@ -468,8 +510,15 @@ export async function openWorkflowsUpdatePanel(
       return;
     }
     if (type === "copy-commit") {
-      await env.clipboard.writeText(updateCommitMessage(WORKFLOWS_TARGET_VERSION));
+      await env.clipboard.writeText(commitMessage);
       void window.showInformationMessage("コミットメッセージをコピーしました。");
+      return;
+    }
+    if (type === "copy-rollback") {
+      const guide = versionGateRollbackGuide(gateOf());
+      if (!guide || guide.commands.length === 0) return;
+      await env.clipboard.writeText(guide.commands.join("\n"));
+      void window.showInformationMessage("コマンドをコピーしました。");
       return;
     }
     if (type === "open-dashboard") {
@@ -583,6 +632,63 @@ export async function openWorkflowsUpdatePanel(
     }
     if (type === "extension-update") {
       await commands.executeCommand("aidlc-guide.checkUpdate");
+      return;
+    }
+    if (type === "pin-project" || type === "use-target") {
+      busy = true;
+      const scope = "cli";
+      send({ type: "reset", scope });
+      try {
+        const cliState = inspectCliManagement(workspaceRoot);
+        const machine = cliState.machineVersion;
+        if (!cliState.engineNewer || machine === null) {
+          send({ type: "done", scope, message: "状況が変わりました。状態を再確認してください。" });
+          return;
+        }
+        const pin = type === "pin-project";
+        const choice = await window.showWarningMessage(
+          pin
+            ? cliPinConfirmMessage(machine, cliState.target)
+            : cliUseTargetConfirmMessage(machine, cliState.target),
+          { modal: true },
+          pin ? CLI_PIN_CONFIRM_ACTION : CLI_USE_TARGET_CONFIRM_ACTION,
+        );
+        if (!isCurrent()) return;
+        if (choice !== (pin ? CLI_PIN_CONFIRM_ACTION : CLI_USE_TARGET_CONFIRM_ACTION)) {
+          send({ type: "done", scope, message: "中止しました。" });
+          return;
+        }
+        const before = pin ? await gitStatusSnapshot(workspaceRoot, cancellation.signal) : null;
+        const result = await (pin ? pinProjectCli : useTargetCli)({
+          workspaceRoot,
+          isCurrent,
+          signal: cancellation.signal,
+          log: (line) => send({ type: "log", line }),
+        });
+        const runtime = result.ok && isCurrent() ? readNativeInstall() : null;
+        if (runtime) configureCliEnvironment(context, runtime);
+        send({ type: "done", scope, message: cliUpdateMessage(result) });
+        if (pin && result.ok) {
+          const after = await gitStatusSnapshot(workspaceRoot);
+          const files = before === null || after === null ? [] : changedSince(before, after);
+          commitMessage = pinCommitMessage(WORKFLOWS_TARGET_VERSION);
+          send({
+            type: "shared-changes",
+            files: files.slice(0, SHARED_FILES_SHOWN),
+            more: Math.max(0, files.length - SHARED_FILES_SHOWN),
+            commitMessage,
+          });
+        }
+      } catch (cause) {
+        send({
+          type: "done",
+          scope,
+          message: `処理の完了を確認できません。状態を再確認してください：${cause instanceof Error ? cause.message : String(cause)}`,
+        });
+      } finally {
+        busy = false;
+        refresh();
+      }
       return;
     }
     if (type === "update-cli" || type === "doctor") {

@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   inspectCli: vi.fn(),
   updateCli: vi.fn(),
   prepareCli: vi.fn(),
+  pinCli: vi.fn(),
+  useTargetCli: vi.fn(),
   doctor: vi.fn(),
   commands: vi.fn(),
   repair: vi.fn(),
@@ -62,7 +64,14 @@ vi.mock("../src/cli-management.ts", async (importOriginal) => ({
   inspectCliManagement: mocks.inspectCli,
   updateMachineCli: mocks.updateCli,
   prepareProjectCli: mocks.prepareCli,
+  pinProjectCli: mocks.pinCli,
+  useTargetCli: mocks.useTargetCli,
   CLI_UPDATE_CONFIRM_ACTION: "更新する",
+  CLI_PIN_CONFIRM_ACTION: "固定する",
+  CLI_USE_TARGET_CONFIRM_ACTION: "戻す",
+  cliPinConfirmMessage: (machine: string, target: string) => `${target} に固定（既定 ${machine}）`,
+  cliUseTargetConfirmMessage: (machine: string, target: string) =>
+    `既定を ${machine} から ${target} に戻す`,
   cliUpdateConfirmMessage: (version: string, target: string) =>
     `このプロジェクトの固定バージョンは ${version} です。CLI を ${target} に更新しますか？`,
 }));
@@ -96,6 +105,7 @@ const cli: CliManagementState = {
   canPrepare: false,
   canUpdate: false,
   confirmUpdate: false,
+  engineNewer: false,
   status: "ready",
   message: "準備済み",
   updateMessage: "CLI の更新は不要です。",
@@ -108,6 +118,8 @@ const okGate: VersionGate = {
   pin: null,
   engine: null,
   native: false,
+  projectVersion: null,
+  rollback: null,
   message: "プロジェクトは対応版です。",
 };
 const olderGate: VersionGate = {
@@ -1119,7 +1131,11 @@ describe("workflows update GUI", () => {
       await openWorkflowsUpdatePanel(context, "project", "install-engine");
       await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "ready" });
       expect(webview.postMessage).toHaveBeenCalledWith({ type: "focus", id: "update-cli" });
-      expect(webview.postMessage).toHaveBeenCalledWith({ type: "gate", gate: olderGate });
+      expect(webview.postMessage).toHaveBeenCalledWith({
+        type: "gate",
+        gate: olderGate,
+        rollback: null,
+      });
     });
 
     it("focuses the re-check instead of Doctor when no tool is detected to diagnose", async () => {
@@ -1135,7 +1151,11 @@ describe("workflows update GUI", () => {
       const { webview, context } = openPanel();
       await openWorkflowsUpdatePanel(context, "project", "update-project");
       await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "refresh" });
-      expect(webview.postMessage).toHaveBeenCalledWith({ type: "gate", gate: okGate });
+      expect(webview.postMessage).toHaveBeenCalledWith({
+        type: "gate",
+        gate: okGate,
+        rollback: null,
+      });
     });
 
     it("lists the files the update changed and the commit message to share them with", async () => {
@@ -1178,6 +1198,181 @@ describe("workflows update GUI", () => {
       expect(webview.postMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: "shared-changes" }),
       );
+    });
+
+    const newerGate: VersionGate = {
+      ...okGate,
+      status: "project-newer",
+      native: true,
+      projectVersion: NEWER_WORKFLOWS_VERSION,
+      rollback: {
+        kind: "commands",
+        commands: [
+          `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes`,
+          "aidlc config --harness claude --yes",
+        ],
+      },
+      message: `プロジェクトの aidlc-workflows ${NEWER_WORKFLOWS_VERSION} は新しいバージョンです。`,
+    };
+
+    it("shows the way back from a newer project and copies its commands", async () => {
+      mocks.gate.mockReturnValue(newerGate);
+      const { webview, context } = openPanel();
+      await openWorkflowsUpdatePanel(context, "project");
+      const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+      await receive({ type: "refresh" });
+      const sent = webview.postMessage.mock.calls
+        .map(([message]) => message)
+        .find((message) => message.type === "gate");
+      expect(sent.rollback).toMatchObject({
+        heading: `${WORKFLOWS_TARGET_VERSION} に戻す場合`,
+        commands: newerGate.rollback?.kind === "commands" ? newerGate.rollback.commands : [],
+      });
+
+      const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", cli, newerGate), {
+        runScripts: "dangerously",
+        beforeParse(window) {
+          Object.assign(window, { acquireVsCodeApi: () => ({ postMessage: vi.fn() }) });
+        },
+      });
+      try {
+        const document = dom.window.document;
+        expect(document.getElementById("gate-rollback")?.hidden).toBe(true);
+        dom.window.dispatchEvent(new dom.window.MessageEvent("message", { data: sent }));
+        expect(document.getElementById("gate-rollback")?.hidden).toBe(false);
+        expect(document.getElementById("gate-rollback-commands")?.textContent).toBe(
+          `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --harness claude --yes`,
+        );
+        expect(document.getElementById("copy-rollback")?.hidden).toBe(false);
+      } finally {
+        dom.window.close();
+      }
+
+      await receive({ type: "copy-rollback" });
+      expect(mocks.clipboard).toHaveBeenCalledWith(
+        `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --harness claude --yes`,
+      );
+    });
+
+    describe("a newer machine default on an unpinned project", () => {
+      const newerCli: CliManagementState = {
+        ...cli,
+        machineVersion: NEWER_WORKFLOWS_VERSION,
+        projectPin: null,
+        projectVersion: WORKFLOWS_TARGET_VERSION,
+        effectiveVersion: NEWER_WORKFLOWS_VERSION,
+        setupReady: false,
+        engineNewer: true,
+        status: "blocked",
+        message: `このプロジェクトでも ${NEWER_WORKFLOWS_VERSION} で動きます。固定してください。`,
+      };
+      const engineNewerGate: VersionGate = {
+        ...okGate,
+        status: "engine-newer",
+        native: true,
+        engine: NEWER_WORKFLOWS_VERSION,
+        message: "この PC のエンジンが新しいバージョンです。",
+      };
+
+      it("offers pinning and moving the default back in place of a CLI update", () => {
+        const postMessage = vi.fn();
+        const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", newerCli, engineNewerGate), {
+          runScripts: "dangerously",
+          beforeParse(window) {
+            Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+          },
+        });
+        try {
+          const document = dom.window.document;
+          const pin = document.getElementById("pin-project") as HTMLButtonElement;
+          expect((document.getElementById("update-cli") as HTMLButtonElement).hidden).toBe(true);
+          expect(pin.hidden).toBe(false);
+          expect(pin.textContent).toBe(`このプロジェクトを ${WORKFLOWS_TARGET_VERSION} に固定`);
+          expect((document.getElementById("use-target") as HTMLButtonElement).hidden).toBe(false);
+          expect(document.getElementById("cli-state")?.textContent).toBe(newerCli.message);
+          pin.click();
+          expect(postMessage).toHaveBeenLastCalledWith({ type: "pin-project" });
+          expect(pin.disabled).toBe(true);
+          dom.window.dispatchEvent(
+            new dom.window.MessageEvent("message", { data: { type: "cli-state", state: cli } }),
+          );
+          dom.window.dispatchEvent(
+            new dom.window.MessageEvent("message", {
+              data: { type: "done", scope: "cli", message: "固定しました" },
+            }),
+          );
+          expect(pin.hidden).toBe(true);
+          expect((document.getElementById("update-cli") as HTMLButtonElement).hidden).toBe(false);
+        } finally {
+          dom.window.close();
+        }
+      });
+
+      it("focuses the pin the version check asked for", async () => {
+        mocks.gate.mockReturnValue(engineNewerGate);
+        mocks.inspectCli.mockReturnValue(newerCli);
+        const { webview, context } = openPanel();
+        await openWorkflowsUpdatePanel(context, "project", "pin-project");
+        await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "ready" });
+        expect(webview.postMessage).toHaveBeenCalledWith({ type: "focus", id: "pin-project" });
+      });
+
+      it("pins after confirmation and offers the commit for the new pin", async () => {
+        mocks.inspectCli.mockReturnValue(newerCli);
+        mocks.warn.mockResolvedValue("固定する");
+        mocks.snapshot
+          .mockResolvedValueOnce(new Map())
+          .mockResolvedValueOnce(new Map([[".aidlc-version", "??"]]));
+        mocks.pinCli.mockResolvedValue({ ok: true, message: "固定しました", recovery: "not-needed" });
+        const { webview, context } = openPanel();
+        await openWorkflowsUpdatePanel(context, "project");
+        const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+        await receive({ type: "pin-project" });
+        expect(mocks.warn).toHaveBeenCalledWith(
+          `${WORKFLOWS_TARGET_VERSION} に固定（既定 ${NEWER_WORKFLOWS_VERSION}）`,
+          { modal: true },
+          "固定する",
+        );
+        expect(mocks.pinCli).toHaveBeenCalledOnce();
+        expect(mocks.useTargetCli).not.toHaveBeenCalled();
+        expect(webview.postMessage).toHaveBeenCalledWith({
+          type: "shared-changes",
+          files: [".aidlc-version"],
+          more: 0,
+          commitMessage: `chore: aidlc-workflows を ${WORKFLOWS_TARGET_VERSION} に固定`,
+        });
+        await receive({ type: "copy-commit" });
+        expect(mocks.clipboard).toHaveBeenCalledWith(
+          `chore: aidlc-workflows を ${WORKFLOWS_TARGET_VERSION} に固定`,
+        );
+      });
+
+      it("moves the default back only after confirmation, and offers no commit", async () => {
+        mocks.inspectCli.mockReturnValue(newerCli);
+        mocks.warn.mockResolvedValueOnce(undefined).mockResolvedValueOnce("戻す");
+        mocks.useTargetCli.mockResolvedValue({ ok: true, message: "戻しました", recovery: "not-needed" });
+        const { webview, context } = openPanel();
+        await openWorkflowsUpdatePanel(context, "project");
+        const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+        await receive({ type: "use-target" });
+        expect(mocks.useTargetCli).not.toHaveBeenCalled();
+        expect(webview.postMessage).toHaveBeenCalledWith({ type: "done", scope: "cli", message: "中止しました。" });
+        await receive({ type: "use-target" });
+        expect(mocks.useTargetCli).toHaveBeenCalledOnce();
+        expect(mocks.pinCli).not.toHaveBeenCalled();
+        expect(webview.postMessage).not.toHaveBeenCalledWith(
+          expect.objectContaining({ type: "shared-changes" }),
+        );
+      });
+
+      it("does nothing once the situation no longer applies", async () => {
+        mocks.inspectCli.mockReturnValue(cli);
+        const { webview, context } = openPanel();
+        await openWorkflowsUpdatePanel(context, "project");
+        await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "pin-project" });
+        expect(mocks.warn).not.toHaveBeenCalled();
+        expect(mocks.pinCli).not.toHaveBeenCalled();
+      });
     });
 
     it("opens the Guide from the banner once the versions match", async () => {

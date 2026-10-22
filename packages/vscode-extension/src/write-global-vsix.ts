@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { inspectVersionGate, isPreviewRelease } from "@aidlc-guide/reader-core";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import {
   commands,
@@ -17,7 +18,10 @@ import {
   acceptedChoice,
   applyProgressTitle,
   lookupFailureMessage,
+  OPEN_GATE_ACTION,
   presentApplyResult,
+  type ProjectSupport,
+  projectUnsupportedNotice,
   UPDATE_ACTION,
   updateConfirmDetail,
 } from "./update-feedback.ts";
@@ -70,22 +74,72 @@ function fallbackHost(): ExtensionContext {
   } as ExtensionContext;
 }
 
+/**
+ * The version check's first folder (docs/maintenance/version-gate-design.md)
+ * and the newest release it records, when that project is ahead of this
+ * Guide; null otherwise.
+ */
+function projectAhead(): { root: string; version: string } | null {
+  const root = workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (root === undefined || !workspace.isTrusted) return null;
+  try {
+    const gate = inspectVersionGate(root, WORKFLOWS_TARGET_VERSION);
+    if (gate.status !== "project-newer" || gate.projectVersion === null) return null;
+    return { root, version: gate.projectVersion };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the version check says of the project under `target`: the same check
+ * the offered Guide will run, so nothing about the project is re-derived here.
+ */
+function supportUnder(root: string, target: string): ProjectSupport["supported"] {
+  try {
+    switch (inspectVersionGate(root, target).status) {
+      case "project-newer":
+        return false;
+      // Only this machine or Setup is left, and that Guide offers both.
+      case "ok":
+      case "engine-mismatch":
+      case "engine-newer":
+      case "not-installed":
+        return true;
+      default:
+        return "partial";
+    }
+  } catch {
+    return "unverified";
+  }
+}
+
 function runSerializedCheck(context?: ExtensionContext): Promise<void> {
   if (checkJob !== undefined) return checkJob;
   const host = context ?? boundContext;
+  const current = String(
+    host?.extension?.packageJSON?.version ??
+      extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
+      "",
+  );
+  const ahead = projectAhead();
   checkJob = confirmNewerRelease(
-    String(
-      host?.extension?.packageJSON?.version ??
-        extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
-        "",
-    ),
+    current,
     async (release) => {
       // A Guide that supports another aidlc-workflows release blocks this project until it is updated.
-      const change = releaseWorkflowsChange(
-        WORKFLOWS_TARGET_VERSION,
-        await fetchReleaseMetadata(release),
-      );
-      const detail = updateConfirmDetail(release.version, release.notes, change);
+      const metadata = await fetchReleaseMetadata(release);
+      const change = releaseWorkflowsChange(WORKFLOWS_TARGET_VERSION, metadata);
+      const project: ProjectSupport | null =
+        ahead === null
+          ? null
+          : typeof metadata === "object"
+            ? {
+                version: ahead.version,
+                target: metadata.workflowsTarget,
+                supported: supportUnder(ahead.root, metadata.workflowsTarget),
+              }
+            : { version: ahead.version, target: null, supported: "unverified" };
+      const detail = updateConfirmDetail(release.version, release.notes, change, project);
       const choice = await window.showInformationMessage(
         `新しいバージョン ${release.version} があります。更新しますか？`,
         detail === undefined ? { modal: true } : { modal: true, detail },
@@ -93,7 +147,21 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
       );
       return acceptedChoice(choice, UPDATE_ACTION);
     },
-    undefined,
+    // "Up to date" would read as a fix for a project this Guide cannot open yet.
+    ahead === null
+      ? undefined
+      : async () => {
+          const choice = await window.showWarningMessage(
+            projectUnsupportedNotice(
+              current,
+              ahead.version,
+              WORKFLOWS_TARGET_VERSION,
+              isPreviewRelease(ahead.version),
+            ),
+            OPEN_GATE_ACTION,
+          );
+          if (choice === OPEN_GATE_ACTION) await commands.executeCommand("aidlc-guide.open");
+        },
     async (reason) => {
       void window.showErrorMessage(lookupFailureMessage(reason));
     },

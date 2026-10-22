@@ -397,6 +397,33 @@ describe("native setup", () => {
     ]);
   });
 
+  it("resolves a preview machine default, and a registered stable pin behind it", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-preview-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const project = path.join(root, "project");
+    const marker = path.join(project, "aidlc", ".aidlc-sessions", "pin-target");
+    await mkdir(path.dirname(marker), { recursive: true });
+    const executableName = process.platform === "win32" ? "aidlc.exe" : "aidlc";
+    const preview = "2.8.2-preview.20261020.1";
+    const active = path.join(root, "versions", preview, executableName);
+    const pinned = path.join(root, "versions", "2.8.1", executableName);
+    for (const exe of [active, pinned]) {
+      await mkdir(path.dirname(exe), { recursive: true });
+      await writeFile(exe, "fixture", { mode: 0o755 });
+    }
+    await writeFile(path.join(root, "active-executable"), active);
+    expect(readNativeInstall()?.version).toBe(preview);
+    expect(readNativeInstall(project)?.version).toBe(preview);
+    await writeFile(path.join(project, ".aidlc-version"), "2.8.1\n");
+    await writeFile(marker, `${pinned}\n`);
+    await writeFile(
+      path.join(root, "pins.json"),
+      JSON.stringify({ [realpathSync(project)]: "2.8.1" }),
+    );
+    expect(readNativeInstall(project)?.version).toBe("2.8.1");
+  });
+
   it("refuses an unreadable version before use or pin", async () => {
     const runner = vi.fn();
     await expect(useNative(native, "../evil", vi.fn(), runner)).rejects.toThrow("解釈");
@@ -406,7 +433,7 @@ describe("native setup", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
-  it("reads a strict project pin and unpins without a harness refresh", async () => {
+  it("reads a stable or preview project pin and unpins without a harness refresh", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "project-pin-"));
     roots.push(root);
     expect(inspectProjectPin(root)).toEqual({ exists: false, version: null });
@@ -414,6 +441,11 @@ describe("native setup", () => {
     await writeFile(path.join(root, ".aidlc-version"), "not-a-version\n");
     expect(inspectProjectPin(root)).toEqual({ exists: true, version: null });
     expect(readProjectPin(root)).toBeNull();
+    await writeFile(path.join(root, ".aidlc-version"), "2.7.2-preview.20261020.1\n");
+    expect(inspectProjectPin(root)).toEqual({
+      exists: true,
+      version: "2.7.2-preview.20261020.1",
+    });
     await writeFile(path.join(root, ".aidlc-version"), "2.7.1\n");
     expect(inspectProjectPin(root)).toEqual({ exists: true, version: "2.7.1" });
     expect(readProjectPin(root)).toBe("2.7.1");
