@@ -104,11 +104,20 @@ export function inspectVersionGate(
     const at = version === null ? null : parseReleaseId(version);
     return version === null || at === null ? [] : [{ version, at }];
   });
-  const projectVersion =
+  const pick = (later: boolean) =>
     recorded.length === 0
       ? null
-      : recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 ? b : a)).version;
-  const base = { target, tools, pin: pin.version, engine, native, projectVersion, rollback: null };
+      : recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 === later ? b : a)).version;
+  const base = {
+    target,
+    tools,
+    pin: pin.version,
+    engine,
+    native,
+    projectVersion: pick(true),
+    oldestProjectVersion: pick(false),
+    rollback: null,
+  };
   const unknown = (message: string): VersionGate => ({ ...base, status: "unknown", message });
   const newer = (version: string, at: ReleaseId, way: VersionGateRollback): VersionGate => ({
     ...base,
@@ -143,16 +152,17 @@ export function inspectVersionGate(
     const newerLeftovers = leftovers.flatMap((record) => {
       const at = record.version === null ? null : parseReleaseId(record.version);
       return record.version !== null && at !== null && compareReleaseIds(at, wanted) > 0
-        ? [{ version: record.version, at, sourcePath: record.sourcePath }]
+        ? [{ version: record.version, at }]
         : [];
     });
-    // Pinning back cannot remove a newer file a stopped install left, so those come first.
+    // Pinning back cannot fix a file a stopped install left at another version
+    // (or unreadable), and Setup refuses any of them, so those come first.
     const way: VersionGateRollback =
-      newerLeftovers.length > 0
+      leftovers.length > 0
         ? {
             kind: "leftovers",
-            files: newerLeftovers.flatMap((entry) =>
-              entry.sourcePath === null ? [] : [path.relative(root, entry.sourcePath)],
+            files: leftovers.flatMap((record) =>
+              record.sourcePath === null ? [] : [path.relative(root, record.sourcePath)],
             ),
           }
         : { kind: "commands", commands: versionGateRollbackCommands(target, []) };

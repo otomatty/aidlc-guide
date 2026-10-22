@@ -180,8 +180,7 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
     mocks.gate.mockReturnValue({
       status: "project-newer",
       projectVersion: ahead,
-      tools: [{ id: "claude", label: "Claude Code", version: ahead }],
-      pin: ahead,
+      oldestProjectVersion: ahead,
     });
   });
 
@@ -204,15 +203,12 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
     expect(options.detail).not.toContain("コミット");
   });
 
-  it("does not promise to open a mixed project that still has an older tool", async () => {
+  it("does not promise to open a mixed project that still records an older release", async () => {
+    // The gate counts every record, a leftover version file of an undetected tool included.
     mocks.gate.mockReturnValue({
       status: "project-newer",
       projectVersion: ahead,
-      tools: [
-        { id: "claude", label: "Claude Code", version: ahead },
-        { id: "cursor", label: "Cursor", version: "98.0.0" },
-      ],
-      pin: ahead,
+      oldestProjectVersion: "98.0.0",
     });
     mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
     await confirmWith();
@@ -256,8 +252,7 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
     mocks.gate.mockReturnValue({
       status: "project-newer",
       projectVersion: preview,
-      tools: [{ id: "claude", label: "Claude Code", version: preview }],
-      pin: preview,
+      oldestProjectVersion: preview,
     });
     // Dismissed: nothing opens.
     mocks.showWarningMessage.mockResolvedValue(undefined);
@@ -278,8 +273,7 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
     mocks.gate.mockReturnValue({
       status: "ok",
       projectVersion: WORKFLOWS_TARGET_VERSION,
-      tools: [],
-      pin: null,
+      oldestProjectVersion: WORKFLOWS_TARGET_VERSION,
     });
     await runUpdate();
     expect(mocks.confirmNewerRelease.mock.calls[0]?.[2]).toBeUndefined();

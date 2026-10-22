@@ -76,19 +76,16 @@ function fallbackHost(): ExtensionContext {
 /**
  * A project ahead of this Guide, for the version check's first folder
  * (docs/maintenance/version-gate-design.md): the newest release it records,
- * which a Guide must support, and every release it records, which must all
- * match for that Guide to open it. Null when the project is not ahead.
+ * which a Guide must support, and the oldest, which must be the same for that
+ * Guide to open it. Null when the project is not ahead.
  */
-function projectAhead(): { version: string; recorded: string[] } | null {
+function projectAhead(): { version: string; oldest: string | null } | null {
   const root = workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (root === undefined || !workspace.isTrusted) return null;
   try {
     const gate = inspectVersionGate(root, WORKFLOWS_TARGET_VERSION);
     if (gate.status !== "project-newer" || gate.projectVersion === null) return null;
-    const recorded = [...gate.tools.map((tool) => tool.version), gate.pin].filter(
-      (version): version is string => version !== null,
-    );
-    return { version: gate.projectVersion, recorded };
+    return { version: gate.projectVersion, oldest: gate.oldestProjectVersion };
   } catch {
     return null;
   }
@@ -112,7 +109,7 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
       const supports = (target: string) =>
         ahead === null || target !== ahead.version
           ? false
-          : ahead.recorded.every((version) => version === target) || ("partial" as const);
+          : ahead.oldest === target || ("partial" as const);
       const project =
         ahead === null
           ? null

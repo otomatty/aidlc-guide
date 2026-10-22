@@ -25,6 +25,7 @@ function gate(overrides: Partial<VersionGate> = {}): VersionGate {
     engine: null,
     native: false,
     projectVersion: "2.10.0",
+    oldestProjectVersion: "2.10.0",
     rollback: null,
     message:
       "プロジェクトの aidlc-workflows 2.10.0 は、この Guide の対応版 2.11.0 より古いバージョンです。",

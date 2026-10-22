@@ -119,6 +119,7 @@ const okGate: VersionGate = {
   engine: null,
   native: false,
   projectVersion: null,
+  oldestProjectVersion: null,
   rollback: null,
   message: "プロジェクトは対応版です。",
 };
