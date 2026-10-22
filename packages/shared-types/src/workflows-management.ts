@@ -29,7 +29,8 @@ export type VersionGateStatus =
   | "unknown"
   | "project-newer"
   | "project-older"
-  | "engine-mismatch";
+  | "engine-mismatch"
+  | "engine-newer";
 
 /** The one action the update screen offers for each status. */
 export type VersionGateAction =
@@ -37,7 +38,17 @@ export type VersionGateAction =
   | "doctor"
   | "update-guide"
   | "update-project"
-  | "install-engine";
+  | "install-engine"
+  | "pin-project";
+
+/** How a project that moved past the Guide's release can return to it. */
+export type VersionGateRollback =
+  /** A native project: pin the supported release again, then refresh the tools from it. */
+  | { kind: "commands"; commands: string[] }
+  /** A copy-channel project: the official procedure restores an earlier copy runtime. */
+  | { kind: "copy" }
+  /** A workflow record already uses a newer state format, which the supported release refuses to open. */
+  | { kind: "state-newer"; stateVersion: number };
 
 export type VersionGate = {
   status: VersionGateStatus;
@@ -49,6 +60,10 @@ export type VersionGate = {
   engine: string | null;
   /** True when a harness tree carries a native-install stamp. */
   native: boolean;
+  /** The newest aidlc-workflows version the project records; null when none is readable. */
+  projectVersion: string | null;
+  /** For `project-newer`: the way back to the supported release; null for every other status. */
+  rollback: VersionGateRollback | null;
   /** Japanese, human-readable explanation of the status. */
   message: string;
 };
@@ -61,6 +76,7 @@ export const VERSION_GATE_ACTIONS: Readonly<
   "project-newer": "update-guide",
   "project-older": "update-project",
   "engine-mismatch": "install-engine",
+  "engine-newer": "pin-project",
 };
 
 /** The button text for each action; shared by the dashboard and the extension's notice. */
@@ -72,9 +88,65 @@ export function versionGateActionLabel(action: VersionGateAction, target: string
       return "AIDLC Guide を更新";
     case "install-engine":
       return `この PC に ${target} を導入`;
+    case "pin-project":
+      return `このプロジェクトを ${target} に固定`;
     case "doctor":
       return "Doctor で診断";
     case "setup":
       return "セットアップを開く";
+  }
+}
+
+/** The official commands that pin a native project back to `target` and refresh its tools. */
+export function versionGateRollbackCommands(target: string): string[] {
+  return [`aidlc config --pin ${target} --yes`, "aidlc config --yes"];
+}
+
+export type VersionGateRollbackGuide = {
+  heading: string;
+  lines: string[];
+  /** Run in the project folder, in order; empty when there is nothing to run. */
+  commands: string[];
+};
+
+/**
+ * The way back for a `project-newer` gate, worded once for the dashboard and
+ * the update panel. The Guide shows it and never runs it: going back changes
+ * files the team shares, so the person who updated decides
+ * (docs/maintenance/version-gate-design.md).
+ */
+export function versionGateRollbackGuide(gate: VersionGate): VersionGateRollbackGuide | null {
+  const rollback = gate.rollback;
+  // A gate from a server that predates the field carries none.
+  if (!rollback) return null;
+  const heading = `${gate.target} に戻す場合`;
+  switch (rollback.kind) {
+    case "state-newer":
+      return {
+        heading,
+        lines: [
+          `作業記録が新しい形式（State Version ${rollback.stateVersion}）で保存されているため、${gate.target} には戻せません。${gate.target} はこの形式の記録を開けません。`,
+          "このプロジェクトのバージョンに対応した AIDLC Guide が出るまでお待ちください。",
+        ],
+        commands: [],
+      };
+    case "copy":
+      return {
+        heading,
+        lines: [
+          `このプロジェクトは aidlc-workflows をコピーで導入しています。公式手順の「更新の安全」に従って ${gate.target} のコピー用ランタイムで戻すか、Git で更新前のコミットに戻してください。`,
+          "更新をすでにコミットしてチームと共有していた場合は、戻す前にチームで相談してください。",
+        ],
+        commands: [],
+      };
+    case "commands":
+      return {
+        heading,
+        lines: [
+          `プロジェクトのフォルダーで次のコマンドを順に実行すると、固定バージョンを ${gate.target} に戻し、各ツールのファイルを ${gate.target} にそろえます。`,
+          "戻した後は git status で変わったファイルを確認してください。更新をすでにコミットしてチームと共有していた場合は、戻す前にチームで相談し、戻した変更もコミットします。",
+        ],
+        commands: rollback.commands,
+      };
   }
 }

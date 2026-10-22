@@ -7,8 +7,10 @@ import {
   type CliManagementOptions,
   inspectCliManagement,
   nativeLauncherReady,
+  pinProjectCli,
   prepareProjectCli,
   updateMachineCli,
+  useTargetCli,
 } from "../src/cli-management.ts";
 import { type NativeInstall, SETUP_RELEASE } from "../src/native-setup.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
@@ -861,5 +863,115 @@ describe("CLI management", () => {
     finish?.();
     expect(await operation).toMatchObject({ ok: true });
     expect(await prepareProjectCli(fixture().options)).toMatchObject({ ok: true });
+  });
+});
+
+describe("a newer machine default on an unpinned native project", () => {
+  function newerDefault(retained = [NEWER_WORKFLOWS_VERSION, SETUP_RELEASE]) {
+    const state = fixture({ machine: NEWER_WORKFLOWS_VERSION, retained, versions: [SETUP_RELEASE] });
+    const pin = vi.fn(async (_install: NativeInstall, _root: string, version: string) => {
+      // The official CLI writes `.aidlc-version` and registers it on this machine.
+      state.local.pin = { exists: true, version };
+      state.local.registered = true;
+    });
+    const hooks = { ...state.hooks, pin, isNative: () => true };
+    return { ...state, hooks, options: { ...state.options, hooks } };
+  }
+
+  it("offers to pin the project or move the default back, not a CLI update", () => {
+    const { hooks } = newerDefault();
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      engineNewer: true,
+      setupReady: false,
+      canPrepare: false,
+      canUpdate: false,
+      effectiveVersion: NEWER_WORKFLOWS_VERSION,
+    });
+    expect(inspectCliManagement("/project", hooks).message).toContain(`${SETUP_RELEASE} に固定`);
+  });
+
+  it("is not offered for a copy-channel project or a pinned one", () => {
+    const copy = fixture({
+      machine: NEWER_WORKFLOWS_VERSION,
+      retained: [NEWER_WORKFLOWS_VERSION, SETUP_RELEASE],
+      versions: [SETUP_RELEASE],
+    });
+    expect(inspectCliManagement("/project", { ...copy.hooks, isNative: () => false }).engineNewer).toBe(
+      false,
+    );
+    const pinned = fixture({
+      machine: NEWER_WORKFLOWS_VERSION,
+      retained: [NEWER_WORKFLOWS_VERSION, SETUP_RELEASE],
+      versions: [SETUP_RELEASE],
+      pin: SETUP_RELEASE,
+    });
+    expect(inspectCliManagement("/project", { ...pinned.hooks, isNative: () => true }).engineNewer).toBe(
+      false,
+    );
+  });
+
+  it("pins the project with the target runtime and keeps the newer default", async () => {
+    const { options, hooks, local } = newerDefault();
+    expect(await pinProjectCli(options)).toMatchObject({
+      ok: true,
+      stage: "complete",
+      applied: true,
+      recovery: "not-needed",
+    });
+    expect(hooks.pin).toHaveBeenCalledExactlyOnceWith(
+      runtime(SETUP_RELEASE),
+      "/project",
+      SETUP_RELEASE,
+      options.log,
+      undefined,
+      {},
+    );
+    expect(hooks.install).not.toHaveBeenCalled();
+    expect(hooks.use).not.toHaveBeenCalled();
+    expect(local.pin).toEqual({ exists: true, version: SETUP_RELEASE });
+    expect(local.machine?.version).toBe(NEWER_WORKFLOWS_VERSION);
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      engineNewer: false,
+      setupReady: true,
+      effectiveVersion: SETUP_RELEASE,
+    });
+  });
+
+  it("installs a missing target beside the newer default before pinning", async () => {
+    const { options, hooks, local } = newerDefault([NEWER_WORKFLOWS_VERSION]);
+    expect(await pinProjectCli(options)).toMatchObject({ ok: true, recovery: "restored" });
+    expect(hooks.install).toHaveBeenCalledOnce();
+    expect(local.machine?.version).toBe(NEWER_WORKFLOWS_VERSION);
+    expect(local.pin).toEqual({ exists: true, version: SETUP_RELEASE });
+  });
+
+  it("reports a pin that did not take instead of claiming success", async () => {
+    const { options, hooks } = newerDefault();
+    hooks.pin.mockImplementation(async () => {});
+    expect(await pinProjectCli(options)).toMatchObject({ ok: false, stage: "verify" });
+  });
+
+  it("moves the default back only when asked, without creating a pin", async () => {
+    const { options, hooks, local } = newerDefault();
+    expect(await useTargetCli(options)).toMatchObject({ ok: true, stage: "complete" });
+    expect(hooks.use).toHaveBeenCalledExactlyOnceWith(
+      runtime(SETUP_RELEASE),
+      SETUP_RELEASE,
+      options.log,
+      undefined,
+      {},
+    );
+    expect(local.machine?.version).toBe(SETUP_RELEASE);
+    expect(hooks.pin).not.toHaveBeenCalled();
+    expect(local.pin.exists).toBe(false);
+  });
+
+  it.each([pinProjectCli, useTargetCli])("refuses %o once the situation no longer applies", async (run) => {
+    const { options, hooks } = newerDefault();
+    const stale = { ...options, hooks: { ...hooks, isNative: () => false } };
+    expect(await run(stale)).toMatchObject({ ok: false, reason: "blocked", applied: false });
+    expect(hooks.install).not.toHaveBeenCalled();
+    expect(hooks.pin).not.toHaveBeenCalled();
+    expect(hooks.use).not.toHaveBeenCalled();
   });
 });

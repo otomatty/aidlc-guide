@@ -365,6 +365,13 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
 export { readStageModels } from "./models/read.ts";
 export { inspectVersionGate, type VersionGateDeps } from "./version/gate.ts";
 export {
+  compareReleaseIds,
+  isPreviewRelease,
+  isReleaseId,
+  parseReleaseId,
+  type ReleaseId,
+} from "./version/release-id.ts";
+export {
   type DetectedHarness,
   detectHarnesses,
   findHarnessConflict,

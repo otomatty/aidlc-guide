@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { inspectVersionGate, isPreviewRelease } from "@aidlc-guide/reader-core";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import {
   commands,
@@ -17,7 +18,9 @@ import {
   acceptedChoice,
   applyProgressTitle,
   lookupFailureMessage,
+  OPEN_GATE_ACTION,
   presentApplyResult,
+  projectUnsupportedNotice,
   UPDATE_ACTION,
   updateConfirmDetail,
 } from "./update-feedback.ts";
@@ -70,22 +73,47 @@ function fallbackHost(): ExtensionContext {
   } as ExtensionContext;
 }
 
+/**
+ * The release a project ahead of this Guide needs, for the version check's
+ * first folder (docs/maintenance/version-gate-design.md); null otherwise.
+ */
+function projectAhead(): string | null {
+  const root = workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (root === undefined || !workspace.isTrusted) return null;
+  try {
+    const gate = inspectVersionGate(root, WORKFLOWS_TARGET_VERSION);
+    return gate.status === "project-newer" ? gate.projectVersion : null;
+  } catch {
+    return null;
+  }
+}
+
 function runSerializedCheck(context?: ExtensionContext): Promise<void> {
   if (checkJob !== undefined) return checkJob;
   const host = context ?? boundContext;
+  const current = String(
+    host?.extension?.packageJSON?.version ??
+      extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
+      "",
+  );
+  const ahead = projectAhead();
   checkJob = confirmNewerRelease(
-    String(
-      host?.extension?.packageJSON?.version ??
-        extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
-        "",
-    ),
+    current,
     async (release) => {
       // A Guide that supports another aidlc-workflows release blocks this project until it is updated.
-      const change = releaseWorkflowsChange(
-        WORKFLOWS_TARGET_VERSION,
-        await fetchReleaseMetadata(release),
-      );
-      const detail = updateConfirmDetail(release.version, release.notes, change);
+      const metadata = await fetchReleaseMetadata(release);
+      const change = releaseWorkflowsChange(WORKFLOWS_TARGET_VERSION, metadata);
+      const project =
+        ahead === null
+          ? null
+          : {
+              version: ahead,
+              supported:
+                typeof metadata === "object"
+                  ? metadata.workflowsTarget === ahead
+                  : ("unverified" as const),
+            };
+      const detail = updateConfirmDetail(release.version, release.notes, change, project);
       const choice = await window.showInformationMessage(
         `新しいバージョン ${release.version} があります。更新しますか？`,
         detail === undefined ? { modal: true } : { modal: true, detail },
@@ -93,7 +121,21 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
       );
       return acceptedChoice(choice, UPDATE_ACTION);
     },
-    undefined,
+    // "Up to date" would read as a fix for a project this Guide cannot open yet.
+    ahead === null
+      ? undefined
+      : async () => {
+          const choice = await window.showWarningMessage(
+            projectUnsupportedNotice(
+              current,
+              ahead,
+              WORKFLOWS_TARGET_VERSION,
+              isPreviewRelease(ahead),
+            ),
+            OPEN_GATE_ACTION,
+          );
+          if (choice === OPEN_GATE_ACTION) await commands.executeCommand("aidlc-guide.open");
+        },
     async (reason) => {
       void window.showErrorMessage(lookupFailureMessage(reason));
     },

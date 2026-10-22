@@ -24,6 +24,8 @@ function gate(overrides: Partial<VersionGate> = {}): VersionGate {
     pin: "2.10.0",
     engine: null,
     native: false,
+    projectVersion: "2.10.0",
+    rollback: null,
     message:
       "プロジェクトの aidlc-workflows 2.10.0 は、この Guide の対応版 2.11.0 より古いバージョンです。",
     ...overrides,
@@ -173,7 +175,67 @@ describe("version gate screen", () => {
     });
   });
 
+  it("asks to pin an unpinned project when this PC's engine is newer, and says it changes a shared file", async () => {
+    const newer = gate({ status: "engine-newer", native: true, pin: null, engine: "2.12.0" });
+    stubServer(newer);
+    const postMessage = vi.fn();
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    const user = userEvent.setup();
+    render(<App bootstrap={Promise.resolve(refusal(newer))} />);
+
+    const notice = await screen.findByTestId("version-gate");
+    expect(within(notice).getByRole("heading", { level: 1 }).textContent).toBe(
+      "プロジェクトのバージョンの固定が必要です",
+    );
+    const action = screen.getByTestId("version-gate-action");
+    expect(action.textContent).toBe("このプロジェクトを 2.11.0 に固定");
+    expect(notice.textContent).toContain(".aidlc-version");
+    expect(notice.textContent).toContain("コミットが必要");
+    expect(screen.getByLabelText("バージョン").textContent).toContain("2.12.0");
+    await user.click(action);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "version-gate-action",
+      action: "pin-project",
+    });
+  });
+
+  it("shows the official commands back to the supported release, without running them", async () => {
+    const newer = gate({
+      status: "project-newer",
+      native: true,
+      projectVersion: "2.12.0",
+      rollback: {
+        kind: "commands",
+        commands: ["aidlc config --pin 2.11.0 --yes", "aidlc config --yes"],
+      },
+    });
+    stubServer(newer);
+    render(<App bootstrap={Promise.resolve(refusal(newer))} />);
+
+    const back = await screen.findByTestId("version-gate-rollback");
+    expect(within(back).getByRole("heading").textContent).toBe("2.11.0 に戻す場合");
+    expect(back.textContent).toContain("aidlc config --pin 2.11.0 --yes\naidlc config --yes");
+    expect(back.textContent).toContain("チームで相談");
+    expect(within(back).queryByRole("button")).toBeNull();
+  });
+
+  it("says a project cannot go back once its records moved to a newer state format", async () => {
+    const newer = gate({
+      status: "project-newer",
+      native: true,
+      rollback: { kind: "state-newer", stateVersion: 9 },
+    });
+    stubServer(newer);
+    render(<App bootstrap={Promise.resolve(refusal(newer))} />);
+
+    const back = await screen.findByTestId("version-gate-rollback");
+    expect(back.textContent).toContain("State Version 9");
+    expect(back.textContent).toContain("戻せません");
+    expect(back.querySelector("pre")).toBeNull();
+  });
+
   it.each([
+    ["engine-newer", "このプロジェクトを 2.11.0 に固定"],
     ["project-older", "プロジェクトを 2.11.0 に更新"],
     ["project-newer", "AIDLC Guide を更新"],
     ["unknown", "Doctor で診断"],

@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   registerCommand: vi.fn(),
   executeCommand: vi.fn().mockResolvedValue(undefined),
   showInformationMessage: vi.fn().mockResolvedValue(undefined),
+  showWarningMessage: vi.fn().mockResolvedValue(undefined),
   showErrorMessage: vi.fn(),
+  gate: vi.fn(),
+  workspace: { isTrusted: true, workspaceFolders: undefined as { uri: { fsPath: string } }[] | undefined },
   withProgress: vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task()),
   confirmNewerRelease: vi.fn(),
   applyReleaseFromUrl: vi.fn(),
@@ -22,10 +25,15 @@ vi.mock("vscode", () => ({
   Uri: {},
   window: {
     showInformationMessage: mocks.showInformationMessage,
+    showWarningMessage: mocks.showWarningMessage,
     showErrorMessage: mocks.showErrorMessage,
     withProgress: mocks.withProgress,
   },
-  workspace: {},
+  workspace: mocks.workspace,
+}));
+vi.mock("@aidlc-guide/reader-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@aidlc-guide/reader-core")>()),
+  inspectVersionGate: mocks.gate,
 }));
 vi.mock("../src/release-lookup.ts", () => ({
   confirmNewerRelease: mocks.confirmNewerRelease,
@@ -48,6 +56,8 @@ async function runUpdate(): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
+  mocks.workspace.isTrusted = true;
+  mocks.workspace.workspaceFolders = undefined;
   // Releases made before the metadata asset carry none.
   mocks.fetchReleaseMetadata.mockResolvedValue("absent");
   mocks.confirmNewerRelease.mockResolvedValue({
@@ -160,5 +170,90 @@ describe("更新の確認ダイアログ", () => {
       { modal: true },
       UPDATE_ACTION,
     );
+  });
+});
+
+describe("更新の確認：Guide より新しいプロジェクト", () => {
+  const ahead = "99.0.0";
+  beforeEach(() => {
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "/project" } }];
+    mocks.gate.mockReturnValue({ status: "project-newer", projectVersion: ahead });
+  });
+
+  async function confirmWith(): Promise<unknown> {
+    mocks.confirmNewerRelease.mockResolvedValue(undefined);
+    await runUpdate();
+    const confirm = mocks.confirmNewerRelease.mock.calls[0]?.[1] as (release: {
+      version: string;
+      notes: string[];
+    }) => Promise<boolean>;
+    mocks.showInformationMessage.mockResolvedValue(UPDATE_ACTION);
+    return confirm({ version: "0.2.0", notes: [] });
+  }
+
+  it("says the update opens the project when the new Guide supports its release", async () => {
+    mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
+    await confirmWith();
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).toBe(`この更新で、プロジェクトの aidlc-workflows ${ahead} に対応します。`);
+    expect(options.detail).not.toContain("コミット");
+  });
+
+  it("says the update does not open the project when the new Guide supports another release", async () => {
+    mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: "98.0.0" });
+    await confirmWith();
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).toContain("この更新の対応版は 98.0.0 です");
+    expect(options.detail).toContain("更新後も AIDLC Guide を使えません");
+  });
+
+  it("does not claim the project is supported when the metadata is missing", async () => {
+    await confirmWith();
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).toContain("更新後の画面で確認できます");
+  });
+
+  it("says the latest Guide does not support the project yet, instead of up to date", async () => {
+    mocks.confirmNewerRelease.mockImplementation(
+      async (_current: string, _confirm: unknown, onNone?: () => Promise<void>) => {
+        await onNone?.();
+        return undefined;
+      },
+    );
+    mocks.showWarningMessage.mockResolvedValue("更新の案内を開く");
+    await runUpdate();
+    expect(mocks.showWarningMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(`最新の AIDLC Guide 0.1.0 は、まだ aidlc-workflows ${ahead} に対応していません`),
+      "更新の案内を開く",
+    );
+    expect(mocks.executeCommand).toHaveBeenCalledWith("aidlc-guide.open");
+  });
+
+  it("names a preview project as a preview", async () => {
+    const preview = "99.0.1-preview.20261020.1";
+    mocks.gate.mockReturnValue({ status: "project-newer", projectVersion: preview });
+    // Dismissed: nothing opens.
+    mocks.showWarningMessage.mockResolvedValue(undefined);
+    mocks.confirmNewerRelease.mockImplementation(
+      async (_current: string, _confirm: unknown, onNone?: () => Promise<void>) => {
+        await onNone?.();
+        return undefined;
+      },
+    );
+    await runUpdate();
+    expect(mocks.showWarningMessage.mock.calls[0]?.[0]).toContain(
+      `プレビュー版（${preview}）に対応しません`,
+    );
+    expect(mocks.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it("keeps the plain flow for a project the Guide supports, or an untrusted folder", async () => {
+    mocks.gate.mockReturnValue({ status: "ok", projectVersion: WORKFLOWS_TARGET_VERSION });
+    await runUpdate();
+    expect(mocks.confirmNewerRelease.mock.calls[0]?.[2]).toBeUndefined();
+    mocks.workspace.isTrusted = false;
+    mocks.gate.mockClear();
+    await runUpdate();
+    expect(mocks.gate).not.toHaveBeenCalled();
   });
 });

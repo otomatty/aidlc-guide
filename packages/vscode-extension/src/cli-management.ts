@@ -28,6 +28,8 @@ export type CliManagementHooks = {
   readPinBytes?: (root: string) => Uint8Array;
   writePinBytes?: (root: string, bytes: Uint8Array) => void;
   launcherReady?: (install: NativeInstall | null) => boolean;
+  /** Whether a harness tree carries a native-install stamp; only those run a machine binary. */
+  isNative?: (root: string) => boolean;
 };
 
 export type CliManagementState = {
@@ -43,12 +45,34 @@ export type CliManagementState = {
   canUpdate: boolean;
   /** Project specifies a different version; confirm before updating the machine CLI. */
   confirmUpdate: boolean;
+  /**
+   * An unpinned native project at the target while this machine's default is
+   * newer: the project runs the newer engine until it is pinned (or the default
+   * goes back), so both are offered instead of a CLI update.
+   */
+  engineNewer: boolean;
   status: "ready" | "missing" | "blocked";
   message: string;
   updateMessage: string;
 };
 
 export const CLI_UPDATE_CONFIRM_ACTION = "更新する";
+export const CLI_PIN_CONFIRM_ACTION = "固定する";
+export const CLI_USE_TARGET_CONFIRM_ACTION = "戻す";
+
+export function cliPinConfirmMessage(
+  machineVersion: string,
+  target: string = SETUP_RELEASE,
+): string {
+  return `このプロジェクトを ${target} に固定しますか？\n.aidlc-version を作成します。リポジトリで共有するファイルなので、コミットしてチームに共有してください。このマシンの既定CLI ${machineVersion} は変わりません。`;
+}
+
+export function cliUseTargetConfirmMessage(
+  machineVersion: string,
+  target: string = SETUP_RELEASE,
+): string {
+  return `このマシンの既定CLIを ${machineVersion} から ${target} に戻しますか？\nバージョンを固定していない他のプロジェクトも ${target} で動くようになります。リポジトリのファイルは変わりません。`;
+}
 
 /**
  * A pinned project this machine has not registered yet (a fresh clone): the
@@ -141,6 +165,10 @@ export function nativeLauncherReady(
   }
 }
 
+function isNativeProject(root: string): boolean {
+  return readNativeProjections(root).length > 0;
+}
+
 function newerThanTarget(version: string | undefined): boolean {
   const installed = parseSemver(version ?? "");
   const target = parseSemver(SETUP_RELEASE);
@@ -165,6 +193,12 @@ export function inspectCliManagement(
   const canUpdate =
     !targetInstalled || !launcherReady || (!newer && machine?.version !== SETUP_RELEASE);
   const confirmUpdate = canUpdate && inputs.pin.exists && olderThanTarget(inputs.pin.version);
+  const engineNewer =
+    newer &&
+    !inputs.pin.exists &&
+    versions.length === 1 &&
+    versions[0] === SETUP_RELEASE &&
+    (hooks.isNative ?? isNativeProject)(root);
   const state: CliManagementState = {
     machineVersion: machine?.version ?? null,
     projectPin: inputs.pin.version,
@@ -177,6 +211,7 @@ export function inspectCliManagement(
     canPrepare: false,
     canUpdate,
     confirmUpdate,
+    engineNewer,
     status: "blocked",
     message: "",
     updateMessage: newer
@@ -246,6 +281,11 @@ export function inspectCliManagement(
     return {
       ...state,
       message: `このプロジェクトには CLI ${requested} が必要です。拡張から導入できるのは検証済みの ${SETUP_RELEASE} です。既存の固定バージョンを変更せず、公式手順で必要なCLIを用意してください。`,
+    };
+  if (engineNewer)
+    return {
+      ...state,
+      message: `このマシンの既定CLI ${machine?.version} はプロジェクトの ${SETUP_RELEASE} より新しく、このプロジェクトはバージョンを固定していないため ${machine?.version} で動きます。「このプロジェクトを ${SETUP_RELEASE} に固定」で揃えてください。既定CLIを ${SETUP_RELEASE} に戻すこともできます。`,
     };
   if (!inputs.pin.exists && newer)
     return {
@@ -345,7 +385,7 @@ function nextAction(stage: CliManagementResult["stage"], details: string): strin
 
 async function manageCli(
   opts: CliManagementOptions,
-  mode: "prepare" | "update",
+  mode: "prepare" | "update" | "pin" | "use",
 ): Promise<CliManagementResult> {
   const hooks = opts.hooks ?? {};
   const active = hooks.readActive ?? readNativeInstall;
@@ -388,6 +428,7 @@ async function manageCli(
     const inputs = repositoryInputs(opts.workspaceRoot, hooks);
     const state = inspectCliManagement(opts.workspaceRoot, hooks);
     preserveDefault =
+      mode === "pin" ||
       (mode === "prepare" && inputs.pin.exists) ||
       (newerThanTarget(previous?.version) && (mode === "update" || isFreshProject(inputs)));
     if ((mode === "prepare" && state.setupReady) || (mode === "update" && !state.canUpdate)) {
@@ -404,6 +445,16 @@ async function manageCli(
       release();
       return result(false, state.message, "", "blocked");
     }
+    // Both answer a newer default on an unpinned project, and nothing else.
+    if ((mode === "pin" || mode === "use") && !state.engineNewer) {
+      release();
+      return result(
+        false,
+        "このマシンの既定CLIまたはプロジェクトのバージョンが変わりました。状態を再確認してください。",
+        "",
+        "blocked",
+      );
+    }
 
     let runtime = retained(SETUP_RELEASE);
     if (!runtime || !active() || !launcherReady(active())) {
@@ -419,7 +470,7 @@ async function manageCli(
       runtime = retained(SETUP_RELEASE);
       if (!runtime) throw new Error(`導入後の CLI ${SETUP_RELEASE} を確認できません。`);
     }
-    if (mode === "prepare") {
+    if (mode === "prepare" || mode === "pin") {
       stage = "preflight";
       checkCurrent();
       if (JSON.stringify(inputs) !== JSON.stringify(repositoryInputs(opts.workspaceRoot, hooks)))
@@ -427,7 +478,23 @@ async function manageCli(
           "準備中にリポジトリの固定バージョンまたはエンジンのバージョンが変わりました。共有設定の変更は行っていません。",
         );
     }
-    if (mode === "prepare" && inputs.pin.exists) {
+    if (mode === "pin") {
+      preflight();
+      stage = "register";
+      checkCurrent();
+      applied = true;
+      // Upstream writes `.aidlc-version` and registers it without moving the machine default.
+      await (hooks.pin ?? pinNative)(
+        runtime,
+        opts.workspaceRoot,
+        SETUP_RELEASE,
+        opts.log,
+        undefined,
+        {
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        },
+      );
+    } else if (mode === "prepare" && inputs.pin.exists) {
       if (active(opts.workspaceRoot)?.version !== inputs.pin.version) {
         preflight();
         stage = "register";
@@ -453,6 +520,12 @@ async function manageCli(
         );
       if (!inspectCliManagement(opts.workspaceRoot, hooks).setupReady)
         throw new Error("このプロジェクトでCLIを利用できることを確認できません。");
+    } else if (mode === "pin") {
+      if (
+        (hooks.inspectPin ?? inspectProjectPin)(opts.workspaceRoot).version !== SETUP_RELEASE ||
+        active(opts.workspaceRoot)?.version !== SETUP_RELEASE
+      )
+        throw new Error(`プロジェクトを ${SETUP_RELEASE} に固定できたことを確認できません。`);
     } else if (
       (!preserveDefault && active()?.version !== SETUP_RELEASE) ||
       !retained(SETUP_RELEASE) ||
@@ -465,9 +538,13 @@ async function manageCli(
       true,
       mode === "prepare"
         ? "このプロジェクトでCLIを利用する準備ができました。"
-        : preserveDefault
-          ? `実行環境 ${SETUP_RELEASE} を追加導入しました。マシンの既定CLI ${previous?.version} は維持しています。`
-          : `このマシンの既定CLIを ${SETUP_RELEASE} に更新しました。`,
+        : mode === "pin"
+          ? `このプロジェクトを ${SETUP_RELEASE} に固定しました。マシンの既定CLI ${previous?.version} は維持しています。.aidlc-version をコミットしてチームに共有してください。`
+          : mode === "use"
+            ? `このマシンの既定CLIを ${previous?.version} から ${SETUP_RELEASE} に戻しました。`
+            : preserveDefault
+              ? `実行環境 ${SETUP_RELEASE} を追加導入しました。マシンの既定CLI ${previous?.version} は維持しています。`
+              : `このマシンの既定CLIを ${SETUP_RELEASE} に更新しました。`,
     );
   } catch (cause) {
     const details = errorDetails(cause);
@@ -512,9 +589,20 @@ async function manageCli(
         stage: "verify",
         recovery: outcome.recovery,
       };
+    if (outcome.ok && mode === "pin" && active(opts.workspaceRoot)?.version !== SETUP_RELEASE)
+      outcome = {
+        ...result(
+          false,
+          "固定したバージョンを確認できません。",
+          "既定バージョンの復元後に、このプロジェクトのCLIを確認できません。",
+          "verification-failed",
+        ),
+        stage: "verify",
+        recovery: outcome.recovery,
+      };
     if (
       outcome.ok &&
-      mode === "update" &&
+      (mode === "update" || mode === "use") &&
       (!retained(SETUP_RELEASE) ||
         !launcherReady(active()) ||
         active()?.version !== (preserveDefault ? previous?.version : SETUP_RELEASE))
@@ -555,3 +643,14 @@ export const prepareProjectCli = (opts: CliManagementOptions): Promise<CliManage
 /** Prepare the target runtime, preserving a newer default and all project configuration. */
 export const updateMachineCli = (opts: CliManagementOptions): Promise<CliManagementResult> =>
   manageCli(opts, "update");
+
+/**
+ * Pin an unpinned project to the target beside a newer machine default. Writes
+ * the shared `.aidlc-version` through the official CLI; the default stays.
+ */
+export const pinProjectCli = (opts: CliManagementOptions): Promise<CliManagementResult> =>
+  manageCli(opts, "pin");
+
+/** Move this machine's newer default back to the target. Changes no project file. */
+export const useTargetCli = (opts: CliManagementOptions): Promise<CliManagementResult> =>
+  manageCli(opts, "use");

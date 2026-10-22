@@ -13,6 +13,7 @@ import { configProblems, NativeConfigConflict } from "./workflows-conflicts.ts";
 import {
   inspectProjectPin,
   installLocations,
+  isReleaseId,
   type NativeInstall,
   type ProjectPinState,
   readNativeInstall,
@@ -475,7 +476,8 @@ export async function useNative(
   runner: SetupRunner = runSetupProcess,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  if (!STRICT_VERSION.test(version)) throw new Error("切り替えるバージョンを解釈できません。");
+  // A preview the person chose is restored as it was; the Guide itself only installs stable releases.
+  if (!isReleaseId(version)) throw new Error("切り替えるバージョンを解釈できません。");
   options.signal?.throwIfAborted();
   log(`本体 ${version} をこのマシンの既定バージョンにします…`);
   const result = await runner(
