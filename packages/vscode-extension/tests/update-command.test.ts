@@ -177,7 +177,12 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
   const ahead = "99.0.0";
   beforeEach(() => {
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "/project" } }];
-    mocks.gate.mockReturnValue({ status: "project-newer", projectVersion: ahead });
+    mocks.gate.mockReturnValue({
+      status: "project-newer",
+      projectVersion: ahead,
+      tools: [{ id: "claude", label: "Claude Code", version: ahead }],
+      pin: ahead,
+    });
   });
 
   async function confirmWith(): Promise<unknown> {
@@ -197,6 +202,23 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
     const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
     expect(options.detail).toBe(`この更新で、プロジェクトの aidlc-workflows ${ahead} に対応します。`);
     expect(options.detail).not.toContain("コミット");
+  });
+
+  it("does not promise to open a mixed project that still has an older tool", async () => {
+    mocks.gate.mockReturnValue({
+      status: "project-newer",
+      projectVersion: ahead,
+      tools: [
+        { id: "claude", label: "Claude Code", version: ahead },
+        { id: "cursor", label: "Cursor", version: "98.0.0" },
+      ],
+      pin: ahead,
+    });
+    mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
+    await confirmWith();
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).not.toContain("に対応します");
+    expect(options.detail).toContain(`プロジェクトを ${ahead} にそろえるまで AIDLC Guide を使えません`);
   });
 
   it("says the update does not open the project when the new Guide supports another release", async () => {
@@ -231,7 +253,12 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
 
   it("names a preview project as a preview", async () => {
     const preview = "99.0.1-preview.20261020.1";
-    mocks.gate.mockReturnValue({ status: "project-newer", projectVersion: preview });
+    mocks.gate.mockReturnValue({
+      status: "project-newer",
+      projectVersion: preview,
+      tools: [{ id: "claude", label: "Claude Code", version: preview }],
+      pin: preview,
+    });
     // Dismissed: nothing opens.
     mocks.showWarningMessage.mockResolvedValue(undefined);
     mocks.confirmNewerRelease.mockImplementation(
@@ -248,7 +275,12 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
   });
 
   it("keeps the plain flow for a project the Guide supports, or an untrusted folder", async () => {
-    mocks.gate.mockReturnValue({ status: "ok", projectVersion: WORKFLOWS_TARGET_VERSION });
+    mocks.gate.mockReturnValue({
+      status: "ok",
+      projectVersion: WORKFLOWS_TARGET_VERSION,
+      tools: [],
+      pin: null,
+    });
     await runUpdate();
     expect(mocks.confirmNewerRelease.mock.calls[0]?.[2]).toBeUndefined();
     mocks.workspace.isTrusted = false;

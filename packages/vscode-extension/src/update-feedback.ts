@@ -93,9 +93,14 @@ const CONFIRM_DETAIL_ITEMS = 5;
 
 /**
  * A project ahead of this Guide's supported release, and whether the offered
- * Guide supports it ("unverified" when its metadata could not be read).
+ * Guide supports it: "partial" when it supports the newest recorded release
+ * but some tool or the pin is still older, "unverified" when its metadata
+ * could not be read.
  */
-export type ProjectSupport = { version: string; supported: boolean | "unverified" };
+export type ProjectSupport = {
+  version: string;
+  supported: boolean | "partial" | "unverified";
+};
 
 export const OPEN_GATE_ACTION = "更新の案内を開く";
 
@@ -115,6 +120,11 @@ export function projectUnsupportedNotice(
 function projectLead(project: ProjectSupport, change: WorkflowsChange): string[] {
   if (project.supported === true)
     return [`この更新で、プロジェクトの aidlc-workflows ${project.version} に対応します。`];
+  if (project.supported === "partial")
+    return [
+      `この更新の対応版は ${project.version} ですが、プロジェクトにはそれより古いツールまたは固定バージョンも残っています。更新後に、プロジェクトを ${project.version} にそろえるまで AIDLC Guide を使えません。`,
+      "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。",
+    ];
   if (project.supported === "unverified")
     return [
       "新しい AIDLC Guide が対応する aidlc-workflows の版を確認できませんでした。",

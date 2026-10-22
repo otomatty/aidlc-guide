@@ -74,15 +74,21 @@ function fallbackHost(): ExtensionContext {
 }
 
 /**
- * The release a project ahead of this Guide needs, for the version check's
- * first folder (docs/maintenance/version-gate-design.md); null otherwise.
+ * A project ahead of this Guide, for the version check's first folder
+ * (docs/maintenance/version-gate-design.md): the newest release it records,
+ * which a Guide must support, and every release it records, which must all
+ * match for that Guide to open it. Null when the project is not ahead.
  */
-function projectAhead(): string | null {
+function projectAhead(): { version: string; recorded: string[] } | null {
   const root = workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (root === undefined || !workspace.isTrusted) return null;
   try {
     const gate = inspectVersionGate(root, WORKFLOWS_TARGET_VERSION);
-    return gate.status === "project-newer" ? gate.projectVersion : null;
+    if (gate.status !== "project-newer" || gate.projectVersion === null) return null;
+    const recorded = [...gate.tools.map((tool) => tool.version), gate.pin].filter(
+      (version): version is string => version !== null,
+    );
+    return { version: gate.projectVersion, recorded };
   } catch {
     return null;
   }
@@ -103,14 +109,18 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
       // A Guide that supports another aidlc-workflows release blocks this project until it is updated.
       const metadata = await fetchReleaseMetadata(release);
       const change = releaseWorkflowsChange(WORKFLOWS_TARGET_VERSION, metadata);
+      const supports = (target: string) =>
+        ahead === null || target !== ahead.version
+          ? false
+          : ahead.recorded.every((version) => version === target) || ("partial" as const);
       const project =
         ahead === null
           ? null
           : {
-              version: ahead,
+              version: ahead.version,
               supported:
                 typeof metadata === "object"
-                  ? metadata.workflowsTarget === ahead
+                  ? supports(metadata.workflowsTarget)
                   : ("unverified" as const),
             };
       const detail = updateConfirmDetail(release.version, release.notes, change, project);
@@ -128,9 +138,9 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
           const choice = await window.showWarningMessage(
             projectUnsupportedNotice(
               current,
-              ahead,
+              ahead.version,
               WORKFLOWS_TARGET_VERSION,
-              isPreviewRelease(ahead),
+              isPreviewRelease(ahead.version),
             ),
             OPEN_GATE_ACTION,
           );
