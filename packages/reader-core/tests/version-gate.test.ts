@@ -351,6 +351,18 @@ describe("inspectVersionGate", () => {
       });
     });
 
+    it("counts a large record readState still opens", () => {
+      nativeTool(".claude", "claude", "2.12.0");
+      write(
+        path.join("aidlc", "spaces", "default", "intents", "260103-c", "aidlc-state.md"),
+        `# AI-DLC State\n\n## Project Information\n- **State Version**: 9\n\n${"x".repeat(2 * 1024 * 1024)}\n`,
+      );
+      expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
+        kind: "state-newer",
+        stateVersion: 9,
+      });
+    });
+
     it("is only set for a newer project", () => {
       nativeTool(".claude", "claude", "2.10.0");
       expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).rollback).toBeNull();

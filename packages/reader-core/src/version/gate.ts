@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { MAX_READ_BYTES } from "@aidlc-guide/core-utils";
 import {
   CURRENT_STATE_VERSION,
   type VersionGate,
@@ -29,9 +30,6 @@ export type VersionGateDeps = {
   readEngine?: (root: string) => string | null;
 };
 
-/** A state file far larger than any real one is not read for its version. */
-const STATE_MAX_BYTES = 1024 * 1024;
-
 function defaultEngine(root: string): string | null {
   return readNativeInstall(root)?.version ?? null;
 }
@@ -55,7 +53,8 @@ function newestStateVersion(root: string): number | null {
     for (const record of dirs(path.join(space, "intents"))) {
       const file = path.join(record, STATE_FILENAME);
       try {
-        if (statSync(file).size > STATE_MAX_BYTES) continue;
+        // The same bound readState opens a record with, so every record it reads is counted.
+        if (statSync(file).size > MAX_READ_BYTES) continue;
         const version = readStateVersion(readFileSync(file, "utf8"));
         if (version !== null && (newest === null || version > newest)) newest = version;
       } catch {
