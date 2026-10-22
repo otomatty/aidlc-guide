@@ -118,7 +118,7 @@ export function expectedFromUpstream(
   const framework =
     /^(?:Agent filename|Scope filename|Cycle detection|Orphan stage|Uncompiled stage|Enabled stage compile coverage|Scope validation|Schema validation|Graph references|Keyword overlap|Rule drift|Paired sensor coverage|Stage graph|Scope grid|Sensor |Required sections|Upstream coverage|Traceability|Linter|Type check)/i;
   const machine =
-    /^(?:Update:|Windows uninstall|Windows launcher|Runtime hook PATH|Harness CLI|Installed runtime|Command pointer|Rollback target|Project pin registry|Transaction staging|Transaction recovery|Settings global)/i;
+    /^(?:Update:|Windows uninstall|Windows launcher|Runtime hook PATH|Harness CLI|Installed runtime|Command pointer|Rollback target|Plugin marketplace|Project pin registry|Transaction staging|Transaction recovery|Settings global)/i;
   const fallback =
     fallbackFix ??
     `run \`${invoke} doctor --verbose\`, correct the named condition, then rerun \`${invoke} doctor\``;
@@ -328,16 +328,18 @@ export async function captureDoctor(options: {
           env,
         );
         if (committed.code) throw new Error(committed.stderr);
+        // Since 2.11.1 a machine that never checked passes ("Update: not checked
+        // yet"), so the warning scenario is an update check that went stale.
         writeFileSync(
           path.join(machine, "update-check.json"),
           JSON.stringify({
             schemaVersion: 1,
-            checkedAt: new Date().toISOString(),
+            checkedAt:
+              scenario === "warning" ? "2000-01-01T00:00:00.000Z" : new Date().toISOString(),
             latestVersion: provenance.version,
             releaseDate: "2026-09-15",
           }),
         );
-        if (scenario === "warning") rmSync(path.join(machine, "update-check.json"));
         if (scenario === "failed")
           writeFileSync(
             path.join(project, ".claude/settings.local.json"),

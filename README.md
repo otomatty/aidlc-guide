@@ -2,9 +2,9 @@
 
 社内向けの説明には、[実画面付きの紹介資料](docs/introducing/aidlc-guide-introduction.md)を利用できます。[Confluenceへの掲載手順とオンボーディング文案](docs/introducing/README.md)も用意しています。
 
-aidlc-workflows 2.11.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+aidlc-workflows 2.11.1（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
-**対応 aidlc-workflows バージョン: 2.11.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。バージョンの更新漏れと Doctor の検証データ不足は、通常の `bun run check` で検出します。[互換性チェックと同期手順](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)を参照してください。
+**対応 aidlc-workflows バージョン: 2.11.1**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。バージョンの更新漏れと Doctor の検証データ不足は、通常の `bun run check` で検出します。[互換性チェックと同期手順](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)を参照してください。
 
 この **2.11.0 は同梱ドキュメントの同期対象・互換性の基準であり、インストール・更新の導入先**です。`WORKFLOWS_TARGET_VERSION` が指定します。Guide はこのバージョンの形式だけを読みます。プロジェクトのツール・固定バージョン・この PC のエンジンのいずれかが 2.11.0 と一致しない場合は更新の案内画面を表示し、更新が終わるまで同梱ドキュメントの閲覧・更新・Doctor 以外は使えません。古いプロジェクトにはプロジェクトの更新を、新しいプロジェクトには Guide の更新を案内します（[バージョン確認の設計](docs/maintenance/version-gate-design.md)）。
 
@@ -141,7 +141,7 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 
 - **VS Code 1.100 以上**（拡張ホストの Node 20 を前提にバンドルしているため）。Cursor など VS Code 本体に遅れて追随するフォークでも、この下限に到達したビルドであればインストールできます
 - [bun](https://bun.sh) — MCP とブラウザの Dashboard で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースは aidlc-workflows 2.11.0（State Version **8**）。それ以外のバージョンでは更新の案内画面を表示し、古いプロジェクトにはプロジェクトの更新を、新しいプロジェクトには Guide の更新を案内します（ダウングレードはしません）
+- 対象ワークスペースは aidlc-workflows 2.11.1（State Version **8**）。それ以外のバージョンでは更新の案内画面を表示し、古いプロジェクトにはプロジェクトの更新を、新しいプロジェクトには Guide の更新を案内します（ダウングレードはしません）
 - MCP 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発

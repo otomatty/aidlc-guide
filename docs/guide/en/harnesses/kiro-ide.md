@@ -66,7 +66,11 @@ aidlc doctor
 The installer verifies the release metadata, executable, and all-harness runtime archive against the published SHA-256 checksums. The installed runtime does not require Bun, Node.js, or Git. Harness selection happens in `aidlc config`.
 
 On Windows, download `install.ps1` and run
-`& $installer`. See [Windows installation](../18-install-and-lifecycle.md#windows-powershell)
+`& $installer`. If Kiro was open while you installed, including when you ran
+the installer in Kiro's own terminal, quit Kiro fully and reopen it before
+your first `/aidlc`: Kiro keeps the PATH it started with, so its hooks, its
+agent and its other terminals cannot find `aidlc` until it restarts, and
+**Developer: Reload Window** is not enough. See [Windows installation](../18-install-and-lifecycle.md#windows-powershell)
 for account scope, automatic User PATH registration, and `-NoModifyPath`.
 For an air-gapped package, use
 `install.sh --from <release-directory> --offline` on Unix or
@@ -75,10 +79,10 @@ For an air-gapped package, use
 `aidlc config` projects the Kiro shell before the project is opened. The native
 `aidlc engine *` trust grant, and the exact read-only and turn-back-on commands
 listed for a copied project below, ship inside the permissions of the conductor
-(`.kiro/agents/aidlc.md`); every agent it hands work to is denied those
+(`.kiro/agents/aidlc-aidlc.md`); every agent it hands work to is denied those
 commands. Some commands are
 held back from it: `aidlc engine config set *` changes a setting of your piece
-of work, `aidlc engine adapter *` is the entry the IDE's own hooks run, and a
+of work, `aidlc engine adapter *` is the entry the IDE's own hooks run, and an AI-DLC
 command holding `$`, a backtick, `>`, `<`, `&`, `@(`, `@{`, or a line break can
 run, expand, or redirect more than the one command. When an agent runs one of these, Kiro IDE
 asks you first. Earlier releases also merged it into
@@ -101,7 +105,8 @@ mkdir -p your-project/.kiro your-project/aidlc
 for retired_hook in \
   audit-logger block mint runtime-compile stop sync-statusline \
   enforce-approval-gate plan-approval-guard review-freeze state-transition-guard \
-  terminal-command-guard rebuild-stage-graph sync-workflow-state
+  terminal-command-guard rebuild-stage-graph sync-workflow-state \
+  after-shell write-audit-log terminal-command
 do
   rm -f \
     "your-project/.kiro/hooks/aidlc-${retired_hook}.json" \
@@ -153,8 +158,8 @@ commands (`doctor` and `--doctor`, with or without `--verbose`, `version`,
 (`config flags --clear-bypass <switch> --yes`) with no card. A native install
 runs the same commands, as `aidlc ...`, with no card too. Any other
 `config` change (bare `config`, the guided setup, included), the commands that change the machine's AI-DLC install (`use`,
-`update`, `rollback`, `uninstall`, `system`), and a command holding `$`, a
-backtick, `>`, `<`, `&`, `@(`, `@{`, or a line break show Kiro's card first.
+`update`, `rollback`, `uninstall`, `system`), and an AI-DLC command holding `$`,
+a backtick, `>`, `<`, `&`, `@(`, `@{`, or a line break show Kiro's card first.
 
 The versioned runtime uses the native `aidlc` command. Framework developers who
 need the Bun-shaped source projection can clone the repository, run
@@ -173,10 +178,14 @@ workflow.
 
 The install ships:
 
-- `.kiro/skills/aidlc/SKILL.md` — the conductor loaded when you invoke
-  `/aidlc`.
-- `.kiro/agents/aidlc.md` — the same conductor exposed in the workspace agent
-  selector. It delegates through `invoke_sub_agent` (Kiro IDE) or
+- `.kiro/skills/aidlc/SKILL.md`: AI-DLC's instructions to the aidlc agent. The
+  agent has them, with `question-rendering.md` and `composer.md` beside them,
+  from the first line of every chat, so it reads no file before acting on your
+  request.
+- `.kiro/agents/aidlc-aidlc.md` — the same conductor exposed in the workspace agent
+  selector (named so it sorts before the `aidlc-*-agent.md` specialists: Kiro
+  lists agents in file-name order, so `aidlc` comes first in the picker and in
+  the `/` menu). It delegates through `invoke_sub_agent` (Kiro IDE) or
   `orchestrate_subagent` (Kiro CLI), the dispatch tools that run each persona
   under its own tools and deny rules.
 - `.kiro/agents/aidlc-*-agent.md` — all 14 delegation personas, carrying
@@ -208,7 +217,11 @@ The install ships:
 - `.kiro/steering/aidlc-onboarding.md` — always-included harness setup and commands.
 - `.kiro/hooks/aidlc-*.json` — the framework hooks in Kiro's v2 hook format.
   Both surfaces register them when a session starts; in Kiro IDE they appear
-  in the Agent Hooks panel. The IDE 0.x `.kiro.hook` format is no longer
+  in the Agent Hooks panel. Switching one off there writes `"enabled": false`
+  into its file; `/aidlc --doctor` reports it, the next AI-DLC step says it once
+  per change, and while `aidlc-record-human-turn` is off an approval tells you to
+  turn it back on under Agent Hooks rather than to trust the folder. AI-DLC never
+  turns a hook back on for you. The IDE 0.x `.kiro.hook` format is no longer
   shipped: Kiro IDE 1.x never executes it.
 
 ## First run
@@ -243,6 +256,15 @@ window. Otherwise choose **Cancel**.
 
 On Kiro CLI, start `kiro-cli` in `your-project/`, then go to step 4.
 
+When `kiro-cli` is on your PATH, setup also offers Kiro CLI's session model,
+saved in your personal Kiro settings (`~/.kiro/settings/cli.json`). It is a
+Kiro CLI setting: Kiro IDE uses the model you choose in its own model picker.
+On this row setup saves the model only, never an effort, and recommends no
+model over Kiro auto: Enter keeps Kiro auto, and in Kiro IDE's own terminal
+the recommended setup does not ask, and under Kiro auto it says where each
+host chooses its model (Customize still asks in its step 2).
+`aidlc config models --session-model <id>` saves one later.
+
 If doctor reports "AIDLC hooks have not run in this project yet" after you have
 sent a chat message, repeat steps 1 to 3. See
 [Troubleshooting: Kiro IDE hooks not running](../15-troubleshooting.md#kiro-ide-hooks-not-running).
@@ -263,24 +285,22 @@ The `"chat.defaultAgent": "aidlc"` line in `.kiro/settings/cli.json` is a Kiro
 CLI setting: it makes `aidlc` the default agent for `kiro-cli` sessions only,
 and Kiro IDE does not read that file. So in each new Kiro IDE chat:
 
-1. Open the agent picker in the chat panel and choose **aidlc** (its
-   description starts "AI-DLC. Choose this agent in the agent picker"). This
+1. Open the agent picker in the chat panel and choose **aidlc** (the first of
+   AI-DLC's agents there; its description starts "AI-DLC. Choose this agent in
+   the agent picker"). This
    agent lets AI-DLC's commands run without asking you, and lets AI-DLC bring
-   in its specialist agents. When AI-DLC
-   starts, Kiro asks you to allow **Load skill: aidlc**. Choose **Always
-   allow** and keep **Apply to: This workspace**, and Kiro stops asking in
-   new chats for this project. **Allow** covers only the current chat.
+   in its specialist agents, and it already holds AI-DLC's instructions when
+   a chat starts, so it reads no file before acting on your first line.
 2. Type the whole request, then press Enter: for example `/aidlc --doctor` or
-   `/aidlc build a to-do app`. A bare `/aidlc` works too. While the `/` menu
-   is open, Enter puts its first entry in the chat, a specialist such as
-   `aidlc-architect-agent`, and the next Enter sends it. AI-DLC reads that as
-   `/aidlc` and carries on.
+   `/aidlc build a to-do app`. A bare `/aidlc` works too: while the `/` menu
+   is open, Enter completes the line to its first entry, which is `/aidlc`
+   itself, and the next Enter sends it.
 3. Picking `aidlc` from the `/` menu does not change which agent the chat
-   uses. If the chat is still on **Default**, Kiro asks you to approve
-   loading AI-DLC and then each command it runs. To avoid that, choose
-   **aidlc** in the agent picker first (step 1). The `aidlc-...-agent`
-   entries in the `/` menu are the specialists AI-DLC brings in during a
-   workflow; you do not start them yourself.
+   uses. If the chat is still on **Default**, AI-DLC's first move on your
+   first request is its own command, which Kiro asks you to approve, and then
+   each command it runs asks. To avoid that, choose **aidlc** in the agent picker first (step 1).
+   The `aidlc-...-agent` entries in the `/` menu are the specialists AI-DLC
+   brings in during a workflow; you do not start them yourself.
 
 With the `aidlc` agent selected you can also ask in plain words, for example
 "start an AI-DLC workflow for a to-do app" or "continue my AI-DLC workflow".
@@ -301,17 +321,27 @@ of a workflow. It does not change which AI-DLC checkpoints stop for you.
 - **Autopilot** (switch on): file changes go through without the card. Select
   **View changes** in the chat to see what changed.
 - In both modes, Kiro asks you to **Allow** any command that the `aidlc` agent
-  does not already allow, such as your project's test command. It also asks
+  does not already allow, such as your project's test command, a `git push`
+  or a recursive delete. Your own commands meet no AI-DLC rule, so once you
+  choose **Always allow** for one, Kiro remembers it, redirects and chains
+  included. AI-DLC's own commands ask
+  when one holds a redirect, a chain or a substitution (`>`, `&&`, `$(...)`),
+  so an allowed AI-DLC command cannot be stretched into another. Kiro also asks
   before the two AI-DLC commands held back on purpose (see
   [Native channel](#native-channel-recommended)).
+- In Kiro CLI (its v3 engine), when a side-by-side build's workers or
+  reviewers ask, Kiro gathers their requests in a "tool approval pending" box;
+  (f) **Approve all pending and auto-approve future subagent requests** lets
+  them run whatever they ask, without asking you again, for the rest of that
+  chat, reviewers that start later included. Requests from the main chat still
+  ask as before, and Kiro writes no setting for it.
 
 In both modes, AI-DLC still stops and waits for your typed reply at each of its
 questions, at every approval gate, and at Code Generation's **Approve Plan**
 when plan approval is on (the default in every shipped scope except express
 and poc, and yours to switch; see
 [Plan approval](../13-customization.md#plan-approval)). Kiro's switch cannot
-skip these. AI-DLC's hooks run in either mode: one refuses the agent's tool
-calls while an approval gate waits for you, and another refuses code changes
+skip these. AI-DLC's hooks run in either mode: one refuses code changes
 until the plan is approved or, with plan approval off, until AI-DLC has
 recorded that it builds the plan without asking. AI-DLC also accepts an answer
 or an approval only after you have typed a reply to the question. The AI-DLC
@@ -364,40 +394,36 @@ fallback through `toolArgs.command`; raw prompt text is only a newer-generation
 compatibility shape.
 
 The payload acquisition is **gated to payload-dependent targets**
-(`audit-and-sensors`, `enforce-approval-gate`, `log-subagent`,
+(`audit-and-sensors`, `log-subagent`,
 `plan-approval-guard`, `rebuild-stage-graph`, `review-freeze`,
-`state-transition-guard`, and the `guard-tool-call` and `after-shell` cards
-that run them), the terminal-command seams, plus
+`state-transition-guard`, and the `guard-tool-call`, `person-message` and
+`after-shell` cards that run them), the terminal-command seams, plus
 `session-start` and `continue-workflow` for their modern `session_id`, and
 `record-human-turn` for the exact approval response. A non-empty `USER_PROMPT`
 is consumed immediately on 0.12 builds (which open stdin without ever writing);
-otherwise the adapter reads the 1.x stdin channel with a 2s broken-channel
-ceiling. Every other target touches neither channel and keeps its zero-latency
-path. The approval floor (`enforce-approval-gate`) runs on every `PreToolUse` but a read.
-On 1.x it reads the invoking chat's `session_id`, so concurrent chats are held
-by their own gates; the payload arrives and the channel closes with the call,
-so it does not wait on the normal path, and only a channel that never closes
-holds it until the 2s ceiling. A 0.12 payload carries no `session_id`, so the
-floor uses the identity derived from the IDE host instance: every chat in that
-host shares it and is judged by the gates of the workflow it is bound to.
+otherwise the adapter reads the 1.x stdin channel until Kiro closes it, so a
+message handed over late on a busy machine is still recorded whole, with a 60 s
+safety limit for a channel that never closes. When nothing arrives at all, your
+turn is not recorded (nothing says you typed nothing) and the agent is told to
+say that the last message in this chat did not reach AI-DLC's record, so if
+it answered one of its questions, you will be asked that question again. Every other target touches neither channel and keeps
+its zero-latency path.
 
 | Hook | Trigger (matcher) | Purpose |
 |------|-------------------|---------|
 | `aidlc-session-start` | `SessionStart` | Injects workflow resume context when a new session takes its first prompt (both surfaces; resuming an existing session does not fire it). Kiro IDE 1.1.14 runs no SessionStart hook in a new chat, so `aidlc-record-human-turn` does this work instead |
-| `aidlc-record-human-turn` | `UserPromptSubmit` | Records a human-turn event on every prompt (human-presence gate). A prompt from a chat other than the last one seen, or from a chat not yet started, first starts that chat's session, as `aidlc-session-start` would, so the chat gets its `AIDLC Runtime Session:` line or resume context |
-| `aidlc-terminal-command` | `UserPromptSubmit` | Runs status, doctor, help, navigation, and other terminal utilities before the model when prompt text is available, for the chat that typed the command |
+| `aidlc-record-human-turn` | `UserPromptSubmit` | One card for each message: it first finishes what the last write or command left to do (the two rows "after a write" and "after a command" below), then records a human-turn event on every prompt (human-presence gate), then runs status, doctor, help, navigation, and other terminal utilities before the model when prompt text is available, for the chat that typed the command. A prompt from a chat other than the last one seen, or from a chat not yet started, first starts that chat's session, as `aidlc-session-start` would, so the chat gets its `AIDLC Runtime Session:` line or resume context. A prompt Kiro makes itself (a Workflows step's brief, the notice that a workflow finished) is not counted as your turn: it is recorded as `HOST_TURN`, starts no session and answers no question |
 | `aidlc-continue-workflow` | `Stop` | Forwarding-loop audit (advisory-only; the Stop trigger cannot block on the IDE - enforcement relies on the conductor's own Stop protocol) |
-| `aidlc-guard-tool-call` | `PreToolUse` (every tool but a read) | One card for the five checks below, run in this order on the same call. Each check runs only for the tools beside it; every check runs even after one refuses, and the call is refused when any check refuses, with each reason once. A read (`read_file`, `list_directory`, a search) runs with no card: it cannot answer an approval or change the workspace |
-| `enforce-approval-gate` | in `aidlc-guard-tool-call` (every tool but a read) | Hard-blocks tool calls while an approval gate the person must answer is open and no human has acted since (human-presence floor); the read-only Review brief still prints. A gate AI-DLC approves itself, such as a Construction stage gate once every Unit's checkpoint is approved, does not hold it, and neither does the one Construction setting the person just chose |
+| `aidlc-guard-tool-call` | `PreToolUse` (every tool but a read) | One card: it first finishes what the last write or command left to do (the rows "after a write" and "after a command" below), then runs the four checks below, in this order, on the same call. Each check runs only for the tools beside it; every check runs even after one refuses, and the call is refused when any check refuses, with each reason once. A read (`read_file`, `list_directory`, a search) runs with no card: it cannot answer an approval or change the workspace. Nor does a helper agent handing its answer back (`subagent_response`): the call that acts on the answer is checked |
 | `plan-approval-guard` | in `aidlc-guard-tool-call` (every tool but a read) | Enforces Code Generation Plan Approval with exact target classification when arguments are present. The shell tool is recognised under all three IDE names, `execute_bash`, `execute_pwsh` (Windows), and `shell`: each is forwarded to the shared guard as `Bash` and routed to legacy recovery identically, and with no active workflow no shell call is denied. `execute_pwsh` is marked as PowerShell, so while a plan waits for approval read-only cmdlets (`Get-Content`, `Select-Object`, `ConvertFrom-Json`, ...), `2>$null`, and `aidlc.cmd` or the full path of the installed engine still run; `Out-File`, `Set-Content`, `Add-Content`, `Tee-Object`, and `>` into a file do not. Legacy argument-less payloads permit only measured `fs_write`/`str_replace` plan-question writes as far as this hook goes; `review-freeze` and `state-transition-guard` refuse such a write, so it does not run. PostToolUse stays silent because 0.12 discards that output; the invoking Code Generation `next`/final `continue` directive carries one protected choice capability. Recovery first requires an exact human `Recover Plan Approval` response; another live window cannot initiate it, while a replacement window can recover after the owner PID exits or an IPC-only endpoint disappears. Takeover clears old response evidence before rotating the challenge. An interrupted pre-write window remains a recovery latch even when PostToolUse never runs; definitive `toolSuccess:false` or recognized failure prose clears it because no mutation occurred, while unknown outcomes remain latched. Adapter-owned recovery preserves the human ask while clearing only violation/window state after successful reissue. `UserPromptSubmit` can submit exact recovery/approval labels but cannot reveal or transfer them. Unknown mutators fail closed and shared files/audit retain no plaintext secret. |
 | `review-freeze` | in `aidlc-guard-tool-call` (writes and shells) | Refuses a write or shell mutation of a stage's reviewed output while a fresh terminal review receipt covers it, before the gate. Write tools reach the shared hook as Write/Edit with their target path and shell tools as Bash, with the chat's session; a delegated agent's own writes are judged the same way. An `execute_pwsh` command is read as PowerShell (backslash paths, `Set-Location`), here and in `state-transition-guard`. A call whose input cannot be read (a build older than Kiro IDE 1.1.70 or Kiro CLI 2.24.1 can send one with no arguments) is refused before the hook runs, inside or outside a workflow and with `AIDLC_DISABLE_REVIEW_FREEZE_HOOK=1`, with a line naming the supported builds. |
-| `state-transition-guard` | in `aidlc-guard-tool-call` (writes and shells) | Refuses tool-call writes to AIDLC hooks, session controls, runtime records, and the audit trail, and direct `aidlc-state.ts` lifecycle verbs, pointing to `aidlc-orchestrate.ts report`. Kiro IDE names no delegated agent on its calls, so a delegate's calls get the conductor's rules. A call whose input cannot be read is refused the same way as for `review-freeze`. |
-| `terminal-command-guard` | in `aidlc-guard-tool-call` (`execute_bash\|execute_pwsh\|shell`) | Fallback for empty-prompt IDE versions: runs the classified utility once and refuses the duplicate Windows shell call. On Windows it also refuses an `aidlc` command with a value that cmd.exe would split (see the Windows quotes row below) |
-| `aidlc-write-audit-log` | `PostToolUse` (`fs_write\|str_replace\|fs_append`) | Logs artifact create/update, then fires applicable sensors (path from the tool result) |
-| `aidlc-log-subagent` | `PostToolUse` (`^(subagent_.+\|invoke_sub_agent\|orchestrate_subagent)$`) | Records `SUBAGENT_COMPLETED` with the delegate's identity — one row per stage of an `orchestrate_subagent` pipeline. The matcher is broad so any delegate name reaches the adapter; the adapter drops the auxiliary `subagent_response` shell |
-| `aidlc-after-shell` | `PostToolUse` (`execute_bash\|execute_pwsh\|shell`) | One card for the two hooks below, in this order |
-| `rebuild-stage-graph` | in `aidlc-after-shell` | Recompiles the runtime graph (gated on the audit tail) |
-| `sync-workflow-state` | in `aidlc-after-shell` | Forward-only sync of `Current Stage` from the latest `STAGE_STARTED` in the audit (the IDE surfaces no task payload to parse) |
+| `state-transition-guard` | in `aidlc-guard-tool-call` (writes and shells) | Refuses tool-call writes to AIDLC hooks, session controls, runtime records, and the audit trail; the state tool refuses a direct `aidlc-state.ts` lifecycle verb itself, pointing to `aidlc-orchestrate.ts report`. Kiro IDE names no delegated agent on its calls, so a delegate's calls get the conductor's rules. A call whose input cannot be read is refused the same way as for `review-freeze`. |
+| `terminal-command-guard` | in `aidlc-guard-tool-call` (`execute_bash\|execute_pwsh\|shell`) | Fallback for empty-prompt IDE versions: runs the classified utility once and refuses the duplicate Windows shell call. After a terminal command has run for a chat's turn, it also refuses that chat's other shell calls in the same turn, whatever they run (for a chat the payload names), so the turn of a `/aidlc --status` does not hand out the next stage. On Windows it also refuses an `aidlc` command with a value that cmd.exe would split (see the Windows quotes row below). On every shell it refuses an AI-DLC engine command whose reply goes to a file (`>`, `>>`, or a pipe into `Out-File`, `Set-Content`, `Add-Content`, `Tee-Object` or `tee`), so the agent runs it on its own and reads the reply from the result, which Kiro returns whole. A step command (`orchestrate next` or `continue`) whose reply the agent pipes or captures away from the result (a pipe into any program, `$(...)`, `$x = ...`, a discarded stream) is not refused: the next card forgets that the chat was handed that step's rules, so the agent's next step carries them again |
+| after a write (`fs_write\|str_replace\|fs_append`) | no card: the next card does it | Logs artifact create/update, then fires applicable sensors. `aidlc-guard-tool-call` notes the file a write it lets through targets; the next card that runs anyway (the next guard, your next message, or the turn's end) records it before anything else, with the write's chat, when the file changed. A write that leaves its file as it was records nothing |
+| `aidlc-log-subagent` | `PostToolUse` (`^(?!subagent_response$)(subagent_.+\|invoke_sub_agent\|orchestrate_subagent)$`) | Records `SUBAGENT_COMPLETED` with the delegate's identity, one row per stage of an `orchestrate_subagent` pipeline. The matcher is broad so any delegate name reaches the adapter; it leaves out the auxiliary `subagent_response` shell, which the adapter also drops on every other entry point |
+| after a command (`execute_bash\|execute_pwsh\|shell`) | no card: the next card does it | The two hooks below, in this order, once per command, by the next card that runs anyway and before anything else in it. When the command made a new piece of work, the rebuild gets its name, so the chat that ran it joins it |
+| `rebuild-stage-graph` | after a command | Recompiles the runtime graph (gated on the audit tail) |
+| `sync-workflow-state` | after a command | Forward-only sync of `Current Stage` from the latest `STAGE_STARTED` in the audit (the IDE surfaces no task payload to parse) |
 
 `aidlc-session-end` has **no registration**: Kiro's `Stop` trigger fires at the
 end of every assistant turn, not at conversation close, on both surfaces, so
@@ -405,7 +431,7 @@ registering it would append a spurious `SESSION_ENDED` between prompts in the
 same session. No `SESSION_ENDED` is recorded until Kiro exposes a genuine
 session-end event.
 
-Kiro shows a "Run Command Hook" card each time one of these registrations runs: one before a file change, a command or a hand-off to another agent, one after a write or a command, none for a read, two for each message you send and one at the end of each turn.
+Kiro shows a "Run Command Hook" card each time one of these registrations runs: one before a file change, a command or a hand-off to another agent, none after it, none for a read or for a helper handing its answer back, one for each message you send, one at the end of each turn (which also finishes the turn's last write or command) and one when a helper finishes. A project whose hook files are older still has an after-write card, an after-command card and a second card for each message until `config` refreshes it, which removes `aidlc-write-audit-log.json`, `aidlc-after-shell.json` and `aidlc-terminal-command.json`.
 
 ### Debugging hooks
 
@@ -437,7 +463,7 @@ ways to enable it, either works:
 | Dispatched stages (2.1 pipeline, 2.2 subagent, 2.4 mob, 3.5 subagent) | `Task` tool | `invoke_sub_agent` (Kiro IDE) or `orchestrate_subagent` (Kiro CLI) → all 14 Markdown personas, each running under the `tools:` and deny rules in its own frontmatter and the conductor's command allow |
 | Construction swarm | Parallel `Task` floor, optional ultracode Workflow | Subagent fan-out only; `AIDLC_USE_SWARM=1` is announced as a no-op |
 | Session audit events | `SESSION_STARTED/RESUMED/ENDED`, `SESSION_COMPACTED` | `SESSION_STARTED` when a new session takes its first prompt, and on Kiro IDE `SESSION_RESUMED` when a prompt returns to an earlier chat (no genuine session-end trigger, so no `SESSION_ENDED`; no pre-compaction event) |
-| MCP servers | Ships 5 (`.mcp.json`: `context7` + four AWS servers) | None shipped |
+| MCP servers | Ships 5 (`.mcp.json`: `context7` + four AWS servers) | None shipped; AI-DLC's own chat and its 14 delegated personas get every server in your workspace and user `.kiro/settings/mcp.json`, and each call asks you first (on Kiro CLI from a persona's second step). |
 | Quotes in recorded text on Windows | Recorded as typed | Kiro IDE runs the agent's commands in Windows PowerShell 5.1, which drops empty arguments and removes a double quote inside a value unless it is written as `\"`. The agent writes quotes that way, so answers and feedback are recorded with their quotes. A value that also holds `&`, `<`, `>`, `^`, or a pipe sign is written with single inner quotes instead, because the `aidlc` command runs through cmd.exe, which would act on those characters; the hook refuses a command where one would reach cmd.exe outside its quotes. If a question or answer still arrives split in two, AI-DLC refuses to record it and says how to pass it, so the audit trail never keeps only part of it |
 | Turning a guard, summary confirmation, or plan approval off mid-workflow | Ask in your own words and the agent runs the setter, or type the switch in chat, for example `/aidlc config set summary-confirmation off` | The same, except on Kiro IDE builds that give hooks an empty message (such as 1.0.242), which refuse the setter too. There, for summary confirmation or plan approval, run the terminal command the refusal names to turn it off now for all work, including the work running now (on a native install, `aidlc config flags --bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --local --yes` or `--bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD`; `--clear-bypass` turns it back on); for another guard, update Kiro IDE and type the switch |
 
@@ -451,6 +477,158 @@ A project's `aidlc/` workspace is harness-neutral. Moving a project between
 harnesses (or running both side by side) is supported-but-untested; `/aidlc
 --doctor` will warn if it detects a conflicting harness setup with an active
 workflow.
+
+### A Unit's reviewer reads only that Unit
+
+During a Unit's review, the reviewer is meant to read only that Unit's files
+and the shared contracts it is given. On Claude Code and the other harnesses a
+hook holds it to that; on Kiro no hook can tell the reviewer's reads apart, so
+Kiro holds the reviewer to it instead. For each Unit review, AI-DLC writes a
+copy of the reviewer, `.kiro/agents/aidlc-scoped-review-<id>.md`, whose
+permissions deny reads in every other Unit's `construction/` folder (a Unit of
+the same name in another piece of work included), and dispatches that copy.
+Kiro refuses such a read and leaves those files out of search results; a shell
+read such as `cat` is not covered and asks you first. The
+copy opens no other Unit's file, not even one the Unit's design names as an
+integration point: the reviewer notes that point as a finding instead. The
+copy shows in Kiro's agent list and `/` menu while the review runs; AI-DLC
+dispatches it, so there is no need to pick it. It is deleted when its verdict
+is recorded; AI-DLC's `.gitignore` block keeps it out of commits, and you can
+delete one left by a review that never finished (one you approved the Unit
+without, or one a closed chat stopped). When AI-DLC cannot write a copy it
+should write, or Kiro has no agent by the copy's name (an older Kiro build may
+not load it), AI-DLC dispatches the reviewer itself, as without the copy,
+and says in one line that this review runs without the check. Doctor then
+counts a hook drop: for a copy AI-DLC could not write, under `reviewer-scope`,
+naming the cause; for one Kiro did not load, under `kiro-adapter`, and that
+file (`<record>/.aidlc-engine/hooks-health/kiro-adapter.drops`) names the
+copy. Measured on Kiro CLI 2.31.0 and Kiro IDE 1.3.0, and in a whole workflow
+on Kiro CLI 2.31.1. There is no copy for Units built in parallel, or while
+the reviewer read-scope check is off: under Guard Policy `off`, the default of
+every plan but enterprise, with `guard.reviewer-scope off`, or with
+`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1`; the reviewer is then held to its Unit by
+its instructions only. To have the copy on such a plan, ask in chat to turn the
+reviewer read-scope check on for the work (or type
+`/aidlc config set guard.reviewer-scope on`). A copy keeps the permissions it
+was written with, so turning the check off applies from the next Unit review.
+
+### One agent on its own model and effort
+
+On Kiro every AI-DLC agent runs on your chat's model and effort (the model you
+pick in Kiro IDE, or Kiro CLI's session model) unless a model or effort is set
+for that agent. Kiro can run a delegated agent on its own model and effort, for
+example a reviewer on another model family:
+
+```bash
+aidlc config models --agent architecture-reviewer --model gpt-5.6-terra --effort high --project --yes
+```
+
+AI-DLC records the model and effort in `aidlc.settings.json` and writes
+`model:` (as a quoted string) and `effortLevel:` into that agent's
+`.kiro/agents/aidlc-architecture-reviewer-agent.md`; a Unit's reviewer copy
+keeps them. Kiro reads them when it next dispatches the agent, in a chat that
+is already open too. The model must be one your Kiro offers
+(`kiro-cli chat --list-models`, or Kiro IDE's model picker): one it does not
+offer can fail that agent's dispatch. An effort the model does not take runs
+at the model's own default, and an agent given a model but no effort runs at
+that model's default effort, not your chat's. `--model default` and
+`--effort default` take them out again. A preset or a group effort
+(`--preset`, `--reviewing-effort`) still changes nothing on Kiro, setup records
+no preset there, and the conductor keeps your chat's model.
+
+AI-DLC owns the model and effort lines (`model:`, `effortLevel:`, and the
+`effort:`, `variant:` and `tier:` keys other tools use) of the agent files it
+ships, as it does on Claude Code: `aidlc config` writes those of the agents
+that have a setting, so change them through `aidlc config models` rather than
+by hand; `aidlc config models --check` reports a `model:` or `effortLevel:`
+line that does not match the setting, one you added by hand included. An agent
+file you added yourself is not touched.
+
+An agent's effort is shared by every tool, while its model is recorded per
+tool, so an effort recorded for one agent for another tool applies on Kiro too.
+An `aidlc config` run that writes a model or effort value into a Kiro agent
+file that differs from what the file had, other than a value that run changes
+itself, says so in one line and names
+`aidlc config models --show --harness kiro-ide`, which shows where each value
+is set; `--effort default` (or `--model default`) for that agent, with
+`--project`, `--local` or `--global` (machine settings) for the file it is in,
+and `--harness kiro-ide` when the project has another harness, takes it out
+(an effort taken out this way is gone for every tool).
+`effortLevel` is not in Kiro's documentation. Measured on Kiro CLI 2.31.1 on
+its v3 engine and Kiro IDE 1.3.0.
+
+### Kiro's Workflows feature stops AI-DLC's reviews and helpers
+
+Kiro IDE's **Workflows** feature (Settings > **Kiro Agent > Workflows:
+Enabled**, or the **Enable Workflows** command) runs work as background
+workflows. While it is on, a chat loses the sub-agent tool AI-DLC uses for its
+reviews and helpers: on the `aidlc` agent they never run and the main chat does
+their work itself; on the Default agent they run in the background, the chat's
+turn ends before they finish, every command they run asks in an **Approval
+needed in agent-aidlc-...** panel, and Kiro can hand an `/aidlc` request to its
+own workflow instead of AI-DLC. Workflows is off unless you turned it on.
+
+The switch is a Kiro setting for all your projects: Kiro reads it only from
+your user settings, so a workspace `.vscode/settings.json` value does nothing.
+When it is on and you have not answered before on this computer, AI-DLC asks
+you once whether to turn it off: during `aidlc config`, or in your first Kiro
+IDE chat. `aidlc config --yes` takes the recommended answer and turns it off.
+Say yes and AI-DLC changes only that one setting; then run **Developer: Reload
+Window** from the Command Palette (Ctrl+Shift+P) so open chats pick it up. Say
+no and it stays on, and AI-DLC does not ask again.
+
+To change it later, ask the agent to turn Kiro Workflows off or back on, or run:
+
+```bash
+aidlc config trust --kiro-workflows off --yes   # or: on
+```
+
+Kiro's own **Disable Workflows** and **Enable Workflows** commands do the same.
+`/aidlc --doctor` shows a warning while Workflows is on, and while Kiro's
+settings file has an error AI-DLC cannot read past (Kiro may still read
+Workflows as on from it; the next chat tells you once, and the fix is the
+error in that file). Kiro CLI keeps its
+sub-agent tool with Workflows on (unless you turn its "Workflows: sub-agent
+tool" setting off), so it needs nothing.
+
+### Command Prompt as Kiro's terminal on Windows
+
+Kiro IDE runs its agent's commands in your default terminal profile. When that
+is **Command Prompt**, Kiro hands AI-DLC a command's reply only when the
+command finishes within a second (Command Prompt has no shell integration, so
+Kiro reads the result one second after sending the command and shows exit code
+-1 for every run). Most AI-DLC steps take longer. So in Command Prompt every
+AI-DLC command prints one line first, `AI-DLC reply: aidlc/.aidlc-sessions/replies/<id>.txt`,
+and writes its reply to that file as well as to the terminal; when Kiro cuts
+the result off at that line, the agent reads the reply from the file instead
+of running the command again (the newest twenty replies are kept, in a folder
+git ignores). A value the agent wrote in single quotes, the PowerShell way,
+arrives from Command Prompt as several words with the quotes still on them;
+AI-DLC joins them back into the one value. Steps still take extra turns, so
+Kiro itself recommends PowerShell.
+
+When Kiro's terminal is Command Prompt and you have not answered before on this
+computer, AI-DLC asks you once whether to set it to PowerShell: during
+`aidlc config`, or in your first Kiro IDE chat. `aidlc config --yes` takes the
+recommended answer and sets it. Say yes and AI-DLC changes only that one Kiro
+setting (`terminal.integrated.defaultProfile.windows`, for all your projects);
+then restart Kiro so its chats use it. Say no and it stays as it is, and AI-DLC
+does not ask again.
+
+To set it later, ask the agent, or run:
+
+```bash
+aidlc config trust --kiro-terminal powershell --yes
+```
+
+Kiro's own **Terminal: Select Default Profile** command does the same.
+`/aidlc --doctor` shows a warning while Kiro's terminal is Command Prompt.
+
+While your terminal is Command Prompt, every Kiro IDE chat is told how that
+terminal behaves and how to set PowerShell when you ask for it, so any chat can
+carry out "set Kiro's terminal to PowerShell". If you kept Command Prompt, the
+first time a step's reply is lost the agent tells you once what happened and
+that PowerShell avoids it; it does not ask again.
 
 ### Command cards end with "dministrator: ...powershell.exe" on Windows
 
@@ -502,18 +680,20 @@ temporary roots and byte-compares the results as the CI determinism guard. The
 authored
 Kiro IDE surfaces live in `harness/kiro-ide/`: the orchestrator skill
 (`skills/aidlc/`), always-included active-memory steering (`steering/`),
-the conductor Markdown (`agents/aidlc.md`), the hook adapter and v2 hook JSON
+the conductor Markdown (`agents/aidlc-aidlc.md`), the hook adapter and v2 hook JSON
 files (`hooks/`), the personas' delegate shell deny (`delegate-shell-deny.ts`),
 and onboarding fills — edit those
 (or `core/`), never hand-edit the generated `dist/kiro-ide`.
 
 This harness differs from the `kiro` CLI harness (`harness/kiro/`) in four ways:
-the `/aidlc` skill and the Markdown `agents/aidlc.md` are its conductor surfaces
+the `/aidlc` skill and the Markdown `agents/aidlc-aidlc.md` are its conductor surfaces
 (`settings/cli.json` also makes that agent Kiro CLI's default); it ships v2 hook
 JSON files (the `kiro` harness relies on the agent-JSON `hooks` block); it preloads standing rules through
 always-included steering rather than CLI agent resources; the shared Kiro
 projection removes the core persona's Claude-only `disallowedTools` key; and
-its manifest adds `tools:` and `permissions.rules` frontmatter to every persona.
+its manifest adds `permissions.rules` frontmatter to every persona, beside the
+`tools:` line both harnesses add (each persona a stage reads inline also ships without them, as
+`.kiro/aidlc-common/personas/<agent>.md`, the file the lead reads in its own chat).
 It does not ship the `kiro` harness's agent-v1 JSON.
 See [Porting to a New Harness](../../harness-engineering/09-porting-to-a-new-harness.md).
 

@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.11.0 (State Version 8)",
+  "sourceVersion": "aidlc 2.11.1 (State Version 8)",
   "generator": "scripts/build-artifact-map.ts",
   "stages": {
     "workspace-scaffold": {
@@ -518,7 +518,7 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
+            "en": "Every FR and NFR ID from requirements.md (a requirement with sub-requirements through its FR{n}.{m} IDs) mapped to stories (OK), or marked Deferred with a named downstream stage or N/A with a justification; checked by the traceability sensor",
             "ja": null
           }
         }
@@ -606,7 +606,7 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": "Coverage table mapping each upstream USx.y (or fallback FR) to the component or entity in components.md that realizes it; validated by the traceability sensor",
+            "en": "Coverage table mapping each upstream USx.y (or fallback FR, a requirement with sub-requirements through its FR{n}.{m} IDs) to the component or entity in components.md that realizes it; validated by the traceability sensor",
             "ja": "上流の各 USx.y（なければ FR）を、実現する components.md のコンポーネントまたはエンティティへ対応づけるカバレッジ表。traceability センサーが検証"
           }
         }
@@ -643,7 +643,7 @@
         "unit-of-work-story-map": {
           "fileName": "unit-of-work-story-map.md",
           "descriptions": {
-            "en": "One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (USx.y when stories.md is produced, and only USx.y rows are read; otherwise FR, plus optional NFR rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows)",
+            "en": "One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (USx.y when stories.md is produced, and only USx.y rows are read; otherwise FR, a requirement with sub-requirements by its FR{n}.{m} IDs, plus optional NFR rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows)",
             "ja": "上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。stories.md が作られる場合は USx.y で、USx.y の行だけを読む。それ以外は FR と、スコープがトレースする NFR があれば任意の NFR 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある）"
           }
         },
@@ -739,7 +739,7 @@
       },
       "join": {
         "en": "name",
-        "ja": "position"
+        "ja": "name"
       },
       "joinOrder": [
         "functional-spec.md",
@@ -753,27 +753,27 @@
           "fileName": "entities.md",
           "descriptions": {
             "en": "Entities, relationships, data structures, attributes, lifecycle states",
-            "ja": "エンティティ、関係、データ構造、属性、ライフサイクル状態"
+            "ja": null
           }
         },
         "rules": {
           "fileName": "rules.md",
           "descriptions": {
             "en": "Decision rules, validation logic, constraints, policies, conditional behavior",
-            "ja": "決定ルール、検証ロジック、制約、ポリシー、条件付き振る舞い"
+            "ja": null
           }
         },
         "functional-spec": {
           "fileName": "functional-spec.md",
           "descriptions": {
             "en": "Algorithms, workflows, data transformations, processing sequences, decision trees",
-            "ja": "アルゴリズム、ワークフロー、データ変換、処理順序、決定木"
+            "ja": null
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
+            "en": "Every acceptance criterion of each story mapped to the Unit (without stories.md, the Unit's FR rows in the story map; without a story map, every FR; a requirement with sub-requirements through its FR{n}.{m} IDs), each OK to BRx.y rules in rules.md, N/A or Deferred with its reason, or GAP",
             "ja": null
           }
         }
@@ -788,7 +788,7 @@
       },
       "join": {
         "en": "name",
-        "ja": "position"
+        "ja": "name"
       },
       "joinOrder": [
         "performance-requirements.md",
@@ -804,48 +804,48 @@
           "fileName": "performance-requirements.md",
           "descriptions": {
             "en": "Response times, throughput, latency budgets, resource constraints, benchmarks",
-            "ja": "応答時間、スループット、レイテンシ予算、リソース制約、ベンチマーク"
+            "ja": null
           }
         },
         "security-requirements": {
           "fileName": "security-requirements.md",
           "descriptions": {
             "en": "Authentication, authorization, data protection, compliance, threats",
-            "ja": "認証、認可、データ保護、コンプライアンス、脅威"
+            "ja": null
           }
         },
         "scalability-requirements": {
           "fileName": "scalability-requirements.md",
           "descriptions": {
             "en": "Load projections, scaling triggers, capacity planning, concurrency",
-            "ja": "負荷予測、スケーリング契機、キャパシティ計画、同時実行"
+            "ja": null
           }
         },
         "reliability-requirements": {
           "fileName": "reliability-requirements.md",
           "descriptions": {
             "en": "Availability targets (SLA/SLO), fault tolerance, backup/recovery",
-            "ja": "可用性目標（SLA／SLO）、耐障害性、バックアップ／復旧"
+            "ja": null
           }
         },
         "observability-requirements": {
           "fileName": "observability-requirements.md",
           "descriptions": {
             "en": "Monitoring, logging, tracing, alerting, dashboards, SLI/SLO definitions",
-            "ja": "監視、ログ、トレーシング、アラート、ダッシュボード、SLI／SLO 定義"
+            "ja": null
           }
         },
         "tech-stack-decisions": {
           "fileName": "tech-stack-decisions.md",
           "descriptions": {
             "en": "Technology selections with rationale for each choice",
-            "ja": "各選択の根拠付き技術選定"
+            "ja": null
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
+            "en": "Every inception NFR{n} (when User Stories did not run and the story map gives the Unit NFR rows, those) mapped to its NFRx.y IDs, or N/A with the reason it does not apply",
             "ja": null
           }
         }
@@ -860,7 +860,7 @@
       },
       "join": {
         "en": "name",
-        "ja": "position"
+        "ja": "name"
       },
       "joinOrder": [
         "performance-design.md",
@@ -876,48 +876,48 @@
           "fileName": "performance-design.md",
           "descriptions": {
             "en": "Caching architecture, optimization strategies, resource pooling, async patterns",
-            "ja": "キャッシュアーキテクチャ、最適化戦略、リソースプール、非同期パターン"
+            "ja": null
           }
         },
         "security-design": {
           "fileName": "security-design.md",
           "descriptions": {
             "en": "Auth architecture, encryption design, input validation, security headers",
-            "ja": "認証アーキテクチャ、暗号化設計、入力検証、セキュリティヘッダー"
+            "ja": null
           }
         },
         "scalability-design": {
           "fileName": "scalability-design.md",
           "descriptions": {
             "en": "Scaling architecture, load distribution, data partitioning, auto-scaling rules",
-            "ja": "スケーリングアーキテクチャ、負荷分散、データ分割、オートスケーリング規則"
+            "ja": null
           }
         },
         "reliability-design": {
           "fileName": "reliability-design.md",
           "descriptions": {
             "en": "Resilience patterns, circuit breakers, retry policies, failover procedures",
-            "ja": "レジリエンスパターン、サーキットブレーカー、再試行ポリシー、フェイルオーバー手順"
+            "ja": null
           }
         },
         "observability-design": {
           "fileName": "observability-design.md",
           "descriptions": {
             "en": "Metrics, structured logs, tracing, alerts, dashboards, SLI/SLO definitions",
-            "ja": "メトリクス、構造化ログ、トレーシング、アラート、ダッシュボード、SLI／SLO 定義"
+            "ja": null
           }
         },
         "logical-components": {
           "fileName": "logical-components.md",
           "descriptions": {
             "en": "Component inventory, service boundaries, failure domains, blast radius mapping",
-            "ja": "コンポーネントインベントリ、サービス境界、障害ドメイン、影響半径の対応付け"
+            "ja": null
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
+            "en": "Every NFRx.y from the Unit's NFR requirements mapped to its design solution",
             "ja": null
           }
         }
@@ -932,7 +932,7 @@
       },
       "join": {
         "en": "name",
-        "ja": "position"
+        "ja": "name"
       },
       "joinOrder": [
         "infrastructure-specification.md",
@@ -945,27 +945,27 @@
           "fileName": "infrastructure-specification.md",
           "descriptions": {
             "en": "Deployment (compute/networking/storage/environments/IaC), infrastructure services, and CONDITIONAL shared resources — tabular",
-            "ja": "デプロイ（計算／ネットワーキング／ストレージ／環境／コードによるインフラ）、インフラサービス、条件付きの共有リソース — 表形式"
+            "ja": null
           }
         },
         "monitoring-design": {
           "fileName": "monitoring-design.md",
           "descriptions": {
             "en": "Metrics, alerts, SLIs/SLOs, logs, tracing, dashboards — tabular where possible",
-            "ja": "メトリクス、アラート、SLI／SLO、ログ、トレーシング、ダッシュボード — 可能な限り表形式"
+            "ja": null
           }
         },
         "cicd-pipeline": {
           "fileName": "cicd-pipeline.md",
           "descriptions": {
             "en": "Pipeline stages, build config, deployment strategy, rollback procedures",
-            "ja": "パイプライン段階、ビルド設定、デプロイ戦略、ロールバック手順"
+            "ja": null
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
+            "en": "Every NFRx.y design decision that needs infrastructure mapped to its resource or configuration",
             "ja": null
           }
         }
@@ -1032,7 +1032,7 @@
       },
       "join": {
         "en": "name",
-        "ja": "position"
+        "ja": "name"
       },
       "joinOrder": [
         "build-instructions.md",
@@ -1051,48 +1051,48 @@
           "fileName": "build-instructions.md",
           "descriptions": {
             "en": "Dependency install, env setup, build commands, troubleshooting",
-            "ja": "依存関係インストール、環境整備、ビルドコマンド、トラブルシューティング"
+            "ja": null
           }
         },
         "integration-test-instructions": {
           "fileName": "integration-test-instructions.md",
           "descriptions": {
             "en": "Prerequisites, cross-unit testing, external deps, data setup",
-            "ja": "前提条件、ユニット横断テスト、外部依存、データ準備"
+            "ja": null
           }
         },
         "performance-test-instructions": {
           "fileName": "performance-test-instructions.md",
           "descriptions": {
             "en": "Load testing, NFR scenarios, baselines, stress/soak tests",
-            "ja": "負荷テスト、NFR シナリオ、ベースライン、ストレス／ソーク"
+            "ja": null
           }
         },
         "security-test-instructions": {
           "fileName": "security-test-instructions.md",
           "descriptions": {
             "en": "SAST/DAST, auth testing, injection testing, compliance",
-            "ja": "SAST／DAST、認証テスト、インジェクションテスト、コンプライアンス"
+            "ja": null
           }
         },
         "build-and-test-summary": {
           "fileName": "build-and-test-summary.md",
           "descriptions": {
             "en": "Overall status, test inventory, coverage, readiness assessment",
-            "ja": "全体状態、テストインベントリ、カバレッジ、準備状況評価"
+            "ja": null
           }
         },
         "build-test-results": {
           "fileName": "test-results.md",
           "descriptions": {
             "en": "Actual build/test execution results, pass/fail, coverage",
-            "ja": "実際のビルド／テスト実行結果、合否、カバレッジ"
+            "ja": null
           }
         },
         "cross-unit-traceability": {
           "fileName": "cross-unit-traceability.md",
           "descriptions": {
-            "en": null,
+            "en": "FR/NFR/AC coverage across all Units, verdict, uncovered IDs",
             "ja": null
           }
         }
