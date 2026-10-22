@@ -92,13 +92,15 @@ export function lookupFailureMessage(reason: string): string {
 const CONFIRM_DETAIL_ITEMS = 5;
 
 /**
- * A project ahead of this Guide's supported release, and whether the offered
- * Guide supports it: "partial" when it supports the newest recorded release
- * but some tool or the pin is still older, "unverified" when its metadata
- * could not be read.
+ * A project ahead of this Guide's supported release, and what the version
+ * check says of it under the offered Guide's release (`target`): `true` when
+ * only this machine or Setup is left, which that Guide offers itself;
+ * "partial" when the project's own files still block it; `false` when the
+ * project is still newer; "unverified" when the release could not be read.
  */
 export type ProjectSupport = {
   version: string;
+  target: string | null;
   supported: boolean | "partial" | "unverified";
 };
 
@@ -122,7 +124,7 @@ function projectLead(project: ProjectSupport, change: WorkflowsChange): string[]
     return [`この更新で、プロジェクトの aidlc-workflows ${project.version} に対応します。`];
   if (project.supported === "partial")
     return [
-      `この更新の対応版は ${project.version} ですが、プロジェクトにはそれより古いツールまたは固定バージョンも残っています。更新後に、プロジェクトを ${project.version} にそろえるまで AIDLC Guide を使えません。`,
+      `この更新の対応版は ${project.target ?? project.version} ですが、このプロジェクトには、それと異なるバージョンのツールや固定バージョン、読めないファイルも残っています。更新後に Guide の案内に従ってプロジェクトを整えるまで、AIDLC Guide を使えません。`,
       "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。",
     ];
   if (project.supported === "unverified")

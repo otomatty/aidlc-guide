@@ -64,11 +64,6 @@ export type VersionGate = {
   native: boolean;
   /** The newest aidlc-workflows version the project records; null when none is readable. */
   projectVersion: string | null;
-  /**
-   * The oldest one, counting the same records (leftover version files of
-   * undetected tools included); a Guide opens the project only when both match.
-   */
-  oldestProjectVersion: string | null;
   /** For `project-newer`: the way back to the supported release; null for every other status. */
   rollback: VersionGateRollback | null;
   /** Japanese, human-readable explanation of the status. */

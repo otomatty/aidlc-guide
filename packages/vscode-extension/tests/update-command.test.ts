@@ -175,16 +175,20 @@ describe("更新の確認ダイアログ", () => {
 
 describe("更新の確認：Guide より新しいプロジェクト", () => {
   const ahead = "99.0.0";
+  /** The gate as this Guide sees the project, and as a Guide on `target` would. */
+  function project(current: object, under: (target: string) => string = () => "ok") {
+    mocks.gate.mockImplementation((_root: string, target: string) =>
+      target === WORKFLOWS_TARGET_VERSION ? current : { status: under(target) },
+    );
+  }
   beforeEach(() => {
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "/project" } }];
-    mocks.gate.mockReturnValue({
-      status: "project-newer",
-      projectVersion: ahead,
-      oldestProjectVersion: ahead,
-    });
+    project({ status: "project-newer", projectVersion: ahead }, (target) =>
+      target === ahead ? "ok" : "project-newer",
+    );
   });
 
-  async function confirmWith(): Promise<unknown> {
+  async function confirmWith(): Promise<string | undefined> {
     mocks.confirmNewerRelease.mockResolvedValue(undefined);
     await runUpdate();
     const confirm = mocks.confirmNewerRelease.mock.calls[0]?.[1] as (release: {
@@ -192,43 +196,52 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
       notes: string[];
     }) => Promise<boolean>;
     mocks.showInformationMessage.mockResolvedValue(UPDATE_ACTION);
-    return confirm({ version: "0.2.0", notes: [] });
+    await confirm({ version: "0.2.0", notes: [] });
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string } | undefined;
+    return options?.detail;
   }
 
-  it("says the update opens the project when the new Guide supports its release", async () => {
+  it("asks the same version check under the offered Guide's release", async () => {
     mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
     await confirmWith();
-    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
-    expect(options.detail).toBe(`この更新で、プロジェクトの aidlc-workflows ${ahead} に対応します。`);
-    expect(options.detail).not.toContain("コミット");
+    expect(mocks.gate).toHaveBeenCalledWith("/project", WORKFLOWS_TARGET_VERSION);
+    expect(mocks.gate).toHaveBeenCalledWith("/project", ahead);
   });
 
-  it("does not promise to open a mixed project that still records an older release", async () => {
-    // The gate counts every record, a leftover version file of an undetected tool included.
-    mocks.gate.mockReturnValue({
-      status: "project-newer",
-      projectVersion: ahead,
-      oldestProjectVersion: "98.0.0",
-    });
-    mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
-    await confirmWith();
-    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
-    expect(options.detail).not.toContain("に対応します");
-    expect(options.detail).toContain(`プロジェクトを ${ahead} にそろえるまで AIDLC Guide を使えません`);
-  });
+  it.each(["ok", "engine-mismatch", "engine-newer", "not-installed"])(
+    "says the update opens the project when only this machine or Setup is left (%s)",
+    async (status) => {
+      project({ status: "project-newer", projectVersion: ahead }, () => status);
+      mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
+      const detail = await confirmWith();
+      expect(detail).toBe(`この更新で、プロジェクトの aidlc-workflows ${ahead} に対応します。`);
+    },
+  );
+
+  it.each(["project-older", "unknown"])(
+    "does not promise to open a project whose own files still block it (%s)",
+    async (status) => {
+      // A mixed or half-installed project: an older tool, an orphan version file, an unreadable leftover.
+      project({ status: "project-newer", projectVersion: ahead }, () => status);
+      mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: ahead });
+      const detail = await confirmWith();
+      expect(detail).not.toContain("に対応します");
+      expect(detail).toContain(`この更新の対応版は ${ahead} ですが`);
+      expect(detail).toContain("プロジェクトを整えるまで、AIDLC Guide を使えません");
+    },
+  );
 
   it("says the update does not open the project when the new Guide supports another release", async () => {
     mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: "98.0.0" });
-    await confirmWith();
-    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
-    expect(options.detail).toContain("この更新の対応版は 98.0.0 です");
-    expect(options.detail).toContain("更新後も AIDLC Guide を使えません");
+    const detail = await confirmWith();
+    expect(detail).toContain("この更新の対応版は 98.0.0 です");
+    expect(detail).toContain("更新後も AIDLC Guide を使えません");
   });
 
   it("does not claim the project is supported when the metadata is missing", async () => {
-    await confirmWith();
-    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
-    expect(options.detail).toContain("更新後の画面で確認できます");
+    const detail = await confirmWith();
+    expect(detail).toContain("更新後の画面で確認できます");
+    expect(mocks.gate).not.toHaveBeenCalledWith("/project", ahead);
   });
 
   it("says the latest Guide does not support the project yet, instead of up to date", async () => {
@@ -249,11 +262,7 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
 
   it("names a preview project as a preview", async () => {
     const preview = "99.0.1-preview.20261020.1";
-    mocks.gate.mockReturnValue({
-      status: "project-newer",
-      projectVersion: preview,
-      oldestProjectVersion: preview,
-    });
+    project({ status: "project-newer", projectVersion: preview });
     // Dismissed: nothing opens.
     mocks.showWarningMessage.mockResolvedValue(undefined);
     mocks.confirmNewerRelease.mockImplementation(
@@ -270,11 +279,7 @@ describe("更新の確認：Guide より新しいプロジェクト", () => {
   });
 
   it("keeps the plain flow for a project the Guide supports, or an untrusted folder", async () => {
-    mocks.gate.mockReturnValue({
-      status: "ok",
-      projectVersion: WORKFLOWS_TARGET_VERSION,
-      oldestProjectVersion: WORKFLOWS_TARGET_VERSION,
-    });
+    project({ status: "ok", projectVersion: WORKFLOWS_TARGET_VERSION });
     await runUpdate();
     expect(mocks.confirmNewerRelease.mock.calls[0]?.[2]).toBeUndefined();
     mocks.workspace.isTrusted = false;

@@ -285,24 +285,13 @@ describe("inspectVersionGate", () => {
     expect(gate.tools[0]?.version).toBe("2.11.0-preview.20261001.1");
   });
 
-  it("names the newest and oldest recorded versions", () => {
+  it("names the newest recorded version", () => {
     nativeTool(".claude", "claude", "2.12.0");
     nativeTool(".cursor", "cursor", TARGET);
     write(".aidlc-version", "2.12.0\n");
-    expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) })).toMatchObject({
-      projectVersion: "2.12.0",
-      oldestProjectVersion: TARGET,
-    });
-  });
-
-  it("counts a version file an undetected tool left when naming the oldest", () => {
-    // `.kiro/tools/aidlc-version.ts` alone does not make Kiro a detected tool.
-    nativeTool(".claude", "claude", "2.12.0");
-    write(".aidlc-version", "2.12.0\n");
-    write(path.join(".kiro", "tools", "aidlc-version.ts"), 'export const AIDLC_VERSION = "2.10.0";\n');
-    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(null) });
-    expect(gate.tools.map((tool) => tool.id)).toEqual(["claude"]);
-    expect(gate).toMatchObject({ projectVersion: "2.12.0", oldestProjectVersion: "2.10.0" });
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).projectVersion).toBe(
+      "2.12.0",
+    );
   });
 
   describe("the way back from a newer project", () => {

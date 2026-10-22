@@ -104,20 +104,11 @@ export function inspectVersionGate(
     const at = version === null ? null : parseReleaseId(version);
     return version === null || at === null ? [] : [{ version, at }];
   });
-  const pick = (later: boolean) =>
+  const projectVersion =
     recorded.length === 0
       ? null
-      : recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 === later ? b : a)).version;
-  const base = {
-    target,
-    tools,
-    pin: pin.version,
-    engine,
-    native,
-    projectVersion: pick(true),
-    oldestProjectVersion: pick(false),
-    rollback: null,
-  };
+      : recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 ? b : a)).version;
+  const base = { target, tools, pin: pin.version, engine, native, projectVersion, rollback: null };
   const unknown = (message: string): VersionGate => ({ ...base, status: "unknown", message });
   const newer = (version: string, at: ReleaseId, way: VersionGateRollback): VersionGate => ({
     ...base,
